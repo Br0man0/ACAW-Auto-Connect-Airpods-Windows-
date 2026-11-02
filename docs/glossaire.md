@@ -47,6 +47,13 @@
 | **CsWin32** | Générateur qui écrit le code d'interop à partir de `NativeMethods.txt`. |
 | **HRESULT** | Code de résultat Windows ; `0x8…` = erreur. |
 | **GUID** | Identifiant unique de 128 bits, ex. `7FA06C40-B8F6-4C7E-8556-E8C33A12E54D`. |
+| **Test unitaire** | Petite méthode qui place le code dans une situation précise et vérifie le résultat. Lancés par `dotnet test`. |
+| **xUnit** | Bibliothèque de tests utilisée ici : `[Fact]`, `[Theory]`, `Assert.Equal`. |
+| **Assertion** | Vérification dans un test (`Assert.…`) : si elle est fausse, le test échoue. |
+| **`TimeProvider`** | Classe standard de .NET pour lire l'heure. Remplaçable par une fausse horloge dans les tests. |
+| **Injection de dépendances** | Recevoir ce dont on a besoin (horloge, réglages) par le constructeur au lieu d'aller le chercher soi-même. |
+| **`record`** | Classe faite pour porter des données : propriétés, comparaison et affichage générés automatiquement. |
+| **`enum`** | Liste fermée de valeurs nommées, par ex. les états `Away`, `Switching`… |
 
 ## Méthode
 

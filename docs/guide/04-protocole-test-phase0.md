@@ -9,7 +9,7 @@ réelles. Compte environ 45 minutes.
 - [ ] AirPods appairés au PC **et** à l'iPhone.
 - [ ] iPhone : Réglages → Bluetooth → (i) à côté des AirPods → « Se connecter à cet iPhone » =
       **Automatiquement**.
-- [ ] Ouvrir un terminal dans le dossier `PodHopWin` et compiler :
+- [ ] Ouvrir un terminal dans le dossier du dépôt (`AutoConnectAirpodWin (ACAW)`) et compiler :
 
 ```bash
 dotnet build
@@ -66,7 +66,7 @@ dotnet run --project spikes/Phase0 --no-build -- bench AirPods --n 5 --manuel --
 
 ## Test B2 : si le PC relâche les AirPods, l'iPhone les récupère-t-il ? (risque R2)
 
-C'est ce que ferait PodHopWin après quelques secondes de silence sur le PC.
+C'est ce que ferait ACAW après quelques secondes de silence sur le PC.
 
 1. Connecte les AirPods au PC, mets-les dans les oreilles, et joue 10 s de son sur le PC, puis arrête :
    ```bash

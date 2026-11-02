@@ -15,7 +15,7 @@ piloter une seule ressource : la connexion des AirPods. Elle doit rester testabl
 ### 1. Application de session utilisateur, pas service Windows
 
 Un service tourne en session 0 : il ne voit ni les sessions audio de l'utilisateur, ni les contrôles
-média (SMTC), ni de façon fiable son endpoint par défaut. PodHopWin est donc une **application de barre
+média (SMTC), ni de façon fiable son endpoint par défaut. ACAW est donc une **application de barre
 des tâches** lancée à l'ouverture de session (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`),
 sans droits admin.
 
@@ -88,4 +88,4 @@ du filtre KS. On cible l'endpoint **A2DP**, jamais le mains libres (HFP).
 
 - ✅ Logique testable unitairement, threads maîtrisés.
 - ❌ Un peu plus de code « plomberie » (événements, commandes) qu'un code direct.
-- 🔁 La structure `src/PodHop.Core` + `src/PodHop.App` + `tests/` sera créée après la phase 0.
+- ✅ La structure `src/Acaw.Core` + `src/Acaw.App` + `tests/` a été créée en phase 1 (2026-11-02).

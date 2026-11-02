@@ -88,7 +88,7 @@ posé dans le boîtier (`1011` les deux, `1010`/`1001` un seul, `1000` aucun) �
 - ✅ Les adresses BLE ont changé d'un jour à l'autre (`497B…`/`7BA9…` → `588A…`/`6249…`).
 - 🟡 Puissance reçue à un bureau de distance : −32 à −63 dBm.
 
-## Conséquences pour PodHopWin
+## Conséquences pour ACAW
 
 - **Règle R1 (ADR-0003)** : « AirPods éveillés » = une trame du bon modèle reçue dans les 30 dernières
   secondes. C'est fiable : boîtier fermé, rien n'est émis ; portés, ils émettent en continu.

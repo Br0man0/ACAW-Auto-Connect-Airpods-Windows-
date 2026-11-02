@@ -6,7 +6,7 @@
 
 ## Contexte
 
-PodHop (projet Linux voisin, `../PodHop`) prend les AirPods en ouvrant le canal de contrôle Apple **AAP**
+PodHop, projet Linux dont ACAW reprend l'idée, prend les AirPods en ouvrant le canal de contrôle Apple **AAP**
 sur Bluetooth L2CAP (PSM `0x1001`). Sous Windows, une application ordinaire ne peut pas ouvrir de canal
 L2CAP : Winsock ne propose que RFCOMM et WinRT n'expose pas L2CAP classique. Il faut un autre moyen
 de faire « appeler » les AirPods par le PC.
@@ -78,7 +78,7 @@ est inaccessible sur un adaptateur donné.
 
 ### Conséquence de ces constats
 
-Le retrait du profil mains libres devient une **étape d'installation recommandée** de PodHopWin.
+Le retrait du profil mains libres devient une **étape d'installation recommandée** de ACAW.
 Contrepartie : le micro des AirPods n'est plus utilisable sur le PC. À étudier plus tard : un mode
 « appel » qui réactive le profil à la demande (`BluetoothSetServiceState`, probablement avec droits admin).
 | 2026-11-01 | **Test B : ❌.** AirPods sur le PC (YouTube en lecture, puis arrêté), musique lancée sur l'iPhone : l'iPhone ne reprend **pas** les AirPods, même après 15 s. Le passage manuel par le Centre de contrôle de l'iPhone fonctionne. Explication : la bascule automatique d'Apple n'agit qu'entre appareils Apple du même compte iCloud ; le PC n'en fait pas partie, donc l'iPhone ne « réclame » pas les AirPods. |

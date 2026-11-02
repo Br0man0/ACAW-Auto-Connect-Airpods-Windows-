@@ -1,18 +1,18 @@
 # 1. .NET pour débutants
 
-Ce guide donne juste ce qu'il faut pour comprendre et modifier PodHopWin. Il ne remplace pas un cours
+Ce guide donne juste ce qu'il faut pour comprendre et modifier ACAW. Il ne remplace pas un cours
 de C#, mais il explique chaque notion **là où elle apparaît dans ce projet**.
 
 ## Le vocabulaire de base
 
-| Terme | En une phrase | Dans PodHopWin |
+| Terme | En une phrase | Dans ACAW |
 |---|---|---|
 | **.NET** | La plateforme : un moteur d'exécution + une énorme bibliothèque standard. | Version 10 (support long terme jusqu'en nov. 2028). |
 | **C#** | Le langage qu'on écrit. Il ressemble à Java/TypeScript. | Tous les fichiers `.cs`. |
 | **Runtime** | Ce qu'il faut pour **exécuter** un programme .NET. | Déjà installé sur ton PC. |
 | **SDK** | Ce qu'il faut pour **compiler** (contient aussi le runtime). | .NET SDK 10.0.403. |
 | **Projet** (`.csproj`) | Un programme ou une bibliothèque : liste des réglages et des dépendances. | `spikes/Phase0/Phase0.csproj` |
-| **Solution** (`.sln`) | Un regroupement de projets, ouvert d'un coup par l'IDE. | `PodHopWin.sln` |
+| **Solution** (`.sln`) | Un regroupement de projets, ouvert d'un coup par l'IDE. | `ACAW.sln` |
 | **NuGet** | Le gestionnaire de paquets (l'équivalent de pip ou npm). | Paquet `Microsoft.Windows.CsWin32`. |
 | **TFM** | « Target Framework Moniker » : la cible de compilation. | `net10.0-windows10.0.19041.0` |
 
@@ -22,7 +22,7 @@ de C#, mais il explique chaque notion **là où elle apparaît dans ce projet**.
 
 ## Les commandes à connaître
 
-Toutes se lancent depuis le dossier `PodHopWin` :
+Toutes se lancent depuis le dossier du dépôt (`AutoConnectAirpodWin (ACAW)`) :
 
 ```bash
 dotnet build
@@ -171,7 +171,7 @@ dans des blocs ou méthodes marqués `unsafe`, à condition d'avoir `AllowUnsafe
 > c'est le cas, installe Visual Studio 2026 Community (gratuit) ou utilise VS Code ci-dessous.
 
 1. Lancer Visual Studio Installer → **Modifier** → cocher **« Développement .NET Desktop »**.
-2. Ouvrir `PodHopWin.sln`.
+2. Ouvrir `ACAW.sln`.
 3. Clic droit sur `Phase0` → **Propriétés** → **Déboguer** → **Ouvrir l'interface utilisateur des
    profils de lancement** → « Arguments de ligne de commande » : `list` (ou `connect AirPods`…).
 4. **F5** lance avec le débogueur ; **F9** pose un point d'arrêt sur la ligne courante ; **F10/F11**
@@ -180,7 +180,7 @@ dans des blocs ou méthodes marqués `unsafe`, à condition d'avoir `AllowUnsafe
 ### VS Code (installé)
 
 1. Installer l'extension **C# Dev Kit** (Microsoft).
-2. Ouvrir le dossier `PodHopWin`.
+2. Ouvrir le dossier du dépôt (`AutoConnectAirpodWin (ACAW)`).
 3. Terminal intégré (Ctrl+ù) → `dotnet run --project spikes/Phase0 -- list`.
 4. Pour déboguer : onglet « Exécuter et déboguer » → « C# » → choisir `Phase0`.
 

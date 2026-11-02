@@ -1,43 +1,51 @@
-# PodHopWin
+# ACAW : Auto Connect AirPods Windows
 
-Bascule automatique des AirPods vers un PC **Windows** : quand le PC se met à jouer du son, les
-AirPods quittent l'iPhone et viennent sur le PC. Quand on reprend l'iPhone, la bascule automatique
-d'Apple les ramène.
+Bascule des AirPods entre un PC **Windows** et un iPhone :
+- quand le PC se met à jouer du son, les AirPods quittent l'iPhone et viennent sur le PC (~2 s) ;
+- quand le PC se met en pause ou se tait, il les relâche, et l'iPhone les reprend (~2–3 s).
 
-Version Windows de l'idée de [PodHop](../PodHop) (Linux), avec un mécanisme différent : Windows ne permet
-pas d'ouvrir le canal Apple AAP, on demande donc à la pile audio Bluetooth de Windows de reconnecter le
-casque (voir [ADR-0001](docs/adr/0001-mecanisme-bascule.md)).
+Inspiré de PodHop (Linux), avec un mécanisme propre à Windows : on demande à la pile audio Bluetooth de
+Windows de connecter ou de relâcher le casque (voir l'[ADR-0001](docs/adr/0001-mecanisme-bascule.md)).
+Aucun driver, aucun droit administrateur, aucun accès réseau.
 
-> **État : phase 0 (faisabilité).** Seul un outil de mesure jetable existe (`spikes/Phase0`). Le vrai
-> programme sera écrit une fois les tests de la phase 0 concluants.
+> **État : phase 1.** `acaw` pilote les AirPods à la demande (`switch`, `release`) et affiche leur
+> état. La bascule automatique arrive en phase 2.
 
 ## Démarrage rapide (5 minutes)
 
 Prérequis : Windows 10/11, Bluetooth activé, AirPods appairés au PC, [SDK .NET 10](https://dotnet.microsoft.com/download).
 
-```bash
-dotnet build
-```
+1. Retirer le profil « Mains libres » des AirPods (sinon une bascule prend 10 s au lieu de 2) : voir le
+   [guide d'utilisation](docs/guide/06-utiliser-acaw.md#une-seule-fois--préparer-les-airpods).
+2. Choisir les AirPods :
+   ```bash
+   dotnet run --project src/Acaw.App -- setup
+   ```
+3. Les amener sur le PC, puis les rendre :
+   ```bash
+   dotnet run --project src/Acaw.App -- switch
+   ```
+   ```bash
+   dotnet run --project src/Acaw.App -- release
+   ```
+
+Lancer les tests :
 
 ```bash
-dotnet run --project spikes/Phase0 -- list
+dotnet test
 ```
-
-```bash
-dotnet run --project spikes/Phase0 -- connect AirPods
-```
-
-La suite des tests est décrite dans le [protocole de la phase 0](docs/guide/04-protocole-test-phase0.md).
 
 ## Documentation
 
 Écrite pour quelqu'un qui découvre .NET, à lire dans l'ordre :
 
 1. [.NET pour débutants](docs/guide/01-dotnet-pour-debutants.md) : SDK, projets, compilation, bases de C#
-2. [Anatomie du projet](docs/guide/02-anatomie-du-projet.md) : à quoi sert chaque fichier
-3. [Le spike de la phase 0 expliqué](docs/guide/03-spike-phase0-explique.md) : le code, pas à pas
-4. [Protocole de test de la phase 0](docs/guide/04-protocole-test-phase0.md) : quoi faire, quoi noter
-5. [Glossaire](docs/glossaire.md) : Bluetooth, audio Windows, .NET
+2. [Anatomie du projet](docs/guide/02-anatomie-du-projet.md) : à quoi sert chaque dossier
+3. [Le spike de la phase 0 expliqué](docs/guide/03-spike-phase0-explique.md) : l'accès au Bluetooth, pas à pas
+4. [Protocole de test de la phase 0](docs/guide/04-protocole-test-phase0.md) : les mesures et leurs résultats
+5. [Le cœur et ses tests](docs/guide/05-coeur-et-tests.md) : machine à états, `TimeProvider`, xUnit
+6. [Utiliser acaw](docs/guide/06-utiliser-acaw.md) : commandes et dépannage
+7. [Glossaire](docs/glossaire.md) : Bluetooth, audio Windows, .NET
 
 Référence : [annonces BLE des AirPods, ce qu'on sait](docs/protocole-ble-airpods.md)
 
@@ -51,8 +59,8 @@ Décisions d'architecture :
 
 | Phase | Objectif | État |
 |---|---|---|
-| 0 | Spikes : reconnexion chronométrée, retour iPhone, annonces BLE | ✅ A, B, B2, C faits ([résultats](docs/adr/0001-mecanisme-bascule.md#constats-de-la-phase-0)) · comportement après la veille à établir |
-| 1 | Cœur + ligne de commande (`switch`, `release`, `status`) | ⏳ |
-| 2 | Bascule automatique, barre des tâches, démarrage auto | ⏳ |
+| 0 | Faisabilité : reconnexion chronométrée, retour iPhone, annonces BLE | ✅ ([résultats](docs/adr/0001-mecanisme-bascule.md#constats-de-la-phase-0)) · comportement après la veille à établir |
+| 1 | Cœur (machine à états, décodage BLE, configuration) + `acaw setup / status / switch / release` | ✅ |
+| 2 | Bascule automatique (détection de la lecture), barre des tâches, démarrage auto | ⏳ |
 | 3 | Optimisation de la vitesse, mesurée | ⏳ |
-| 4 | Pause au retrait d'un écouteur, batterie | ⏳ |
+| 4 | Pause au retrait d'un écouteur | ⏳ |

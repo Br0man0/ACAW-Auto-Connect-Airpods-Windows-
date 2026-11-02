@@ -29,7 +29,7 @@ provoquer de ping-pong et sans faire sortir le son par les haut-parleurs par sur
 | **R2** | Relâcher après une pause explicite | SMTC passe à `Paused` / `Stopped` (clic, touche média, ou appui sur l'AirPod) et le reste pendant `T_pause` | `Disconnect` |
 | **R3** | Relâcher après un silence prolongé | plus aucun son pendant `T_silence`, sans pause explicite (jeu, Discord, appli sans contrôle média) | `Disconnect` |
 | **R4** | Relâcher à la demande | bouton « Rendre à l'iPhone » (barre des tâches) ou raccourci clavier | pause des médias du PC, puis `Disconnect` immédiat |
-| **R5** | Ne jamais reprendre ce qu'on vient de perdre | les AirPods quittent le PC **sans** que PodHopWin l'ait demandé (iPhone via Centre de contrôle, hors de portée…) | passer en `Lost` : pas de reprise tant qu'une **nouvelle** lecture n'a pas démarré après la perte, ni avant `T_cooldown` |
+| **R5** | Ne jamais reprendre ce qu'on vient de perdre | les AirPods quittent le PC **sans** que ACAW l'ait demandé (iPhone via Centre de contrôle, hors de portée…) | passer en `Lost` : pas de reprise tant qu'une **nouvelle** lecture n'a pas démarré après la perte, ni avant `T_cooldown` |
 | **R6** | Mettre le PC en pause quand il perd les AirPods | R5 se produit alors qu'un média joue | `TryPauseAsync` sur les sessions SMTC en lecture, pour que le son ne bascule pas sur les haut-parleurs |
 
 **Le scénario du contexte avec ces règles :** l'utilisateur met YouTube en pause (sur le PC ou d'un appui
@@ -121,8 +121,8 @@ de sens qu'une fois la v1 éprouvée. C reste trop incertaine.
 
 ## Actions
 
-1. [ ] Coder les règles dans `PodHop.Core` (machine à états pure, horloge injectée).
-2. [ ] Tests unitaires d'au moins ces scénarios :
+1. [x] Coder les règles dans `Acaw.Core` (machine à états pure, horloge injectée).
+2. [x] Tests unitaires d'au moins ces scénarios :
    - vidéo PC → pause → musique iPhone → relâche après `T_pause` ;
    - pause de 3 s puis reprise → pas de relâche ;
    - perte via le Centre de contrôle pendant la lecture → pause des médias, pas de reprise ;
