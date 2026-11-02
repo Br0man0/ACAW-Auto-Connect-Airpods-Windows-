@@ -18,6 +18,12 @@ public sealed record SilenceDetected : SwitchEvent;
 /// <summary>L'utilisateur demande de rendre les AirPods (bouton ou raccourci).</summary>
 public sealed record ReleaseRequested : SwitchEvent;
 
+/// <summary>
+/// L'utilisateur demande d'amener les AirPods sur ce PC (menu « Amener sur ce PC »). Demande explicite :
+/// elle passe outre le cooldown et l'éveil BLE, et les AirPods restent jusqu'à la fin de la prochaine lecture.
+/// </summary>
+public sealed record TakeRequested : SwitchEvent;
+
 /// <summary>L'endpoint audio des AirPods est devenu actif sur ce PC.</summary>
 public sealed record EndpointConnected : SwitchEvent;
 

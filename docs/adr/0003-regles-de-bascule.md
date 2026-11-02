@@ -46,7 +46,10 @@ les AirPods, et R6 met YouTube en pause.
 | `T_cooldown` | 5 s | empêche qu'une lecture qui redémarre seule (lecture automatique) reprenne aussitôt les AirPods |
 | `T_eveil` | 30 s | 5 fois le pire écart entre deux annonces BLE au repos (5,9 s, test C3) ; voir les [notes BLE](../protocole-ble-airpods.md) |
 
-Une pause suivie d'une reprise avant `T_pause` **annule** la relâche.
+Une pause suivie d'une reprise avant `T_pause` **annule** la relâche. Deux précisions, ajoutées après la revue de la phase 1 :
+
+- une pause qui survient **pendant la connexion** est retenue : les AirPods repartent `T_pause` après leur arrivée, et non `T_silence` ;
+- une lecture qui démarre **pendant la relâche** ne peut pas annuler la déconnexion déjà envoyée : les AirPods sont repris dès que la relâche est confirmée.
 
 ### Machine à états
 
@@ -131,3 +134,34 @@ de sens qu'une fois la v1 éprouvée. C reste trop incertaine.
    - silence de 30 s sans pause → relâche.
 3. [ ] Vérifier que l'appui sur l'AirPod (commande de pause Bluetooth) apparaît bien comme `Paused` dans SMTC.
 4. [ ] v2 : spike du raccourci iOS (option B).
+
+## Mise à jour : phase 2 (2026-11-02)
+
+- **Détecter « le PC joue ».** Un lecteur média (contrôles média de Windows) compte tout de suite. Un son
+  sans lecteur (jeu, Discord) ne compte qu'après `SoundConfirmDelay` (2 s) : un simple « ding » ne vole
+  pas les AirPods à l'iPhone. Il est considéré terminé après `SilenceConfirmDelay` (2 s) de silence.
+  Choix validé par Romsy le 2026-11-02.
+- **« Amener sur ce PC »** (`TakeRequested`) : demande explicite, qui passe outre le cooldown et l'éveil
+  BLE. Les AirPods sont gardés, sans relâche pour silence, jusqu'au prochain début ou fin de lecture.
+- **Action 3** (l'appui sur la tige d'un AirPod apparaît-il comme une pause ?) : à vérifier pendant la
+  recette, ligne 4 du [guide 8](../guide/08-strategie-de-test.md#recette-manuelle).
+
+## Mise à jour : recette et règle R7 (2026-11-02)
+
+- **Action 3 ✅** : l'appui sur la tige d'un AirPod met bien la lecture en pause, et ACAW le voit comme une
+  pause explicite (relâche en 5 s). Constaté par Romsy pendant la recette.
+- **Règle R7 (nouvelle) : pas de son sur les haut-parleurs pendant l'arrivée des AirPods.** Demandée par
+  Romsy après la recette : le début d'une vidéo sortait des haut-parleurs pendant ~2 s.
+  - Quand la machine appelle les AirPods **et que quelque chose joue**, elle coupe la sortie par défaut
+    (`MuteSpeakers`). La lecture continue : seul le son est coupé.
+  - Elle la rétablit (`UnmuteSpeakers`) **dans tous les cas** : 1 s après l'arrivée des AirPods (le temps
+    que Windows leur passe le son), tout de suite en cas d'échec, d'abandon ou de relâche, et **au plus
+    tard 6 s** après la coupure (`MaxMuteDuration`). Si les AirPods ne viennent pas, on entend donc au pire
+    6 s de silence, puis le son revient sur les haut-parleurs.
+  - L'adaptateur ne rétablit que ce qu'il a lui-même coupé, et note la coupure dans un fichier : si ACAW
+    s'arrête brutalement pendant une coupure, le démarrage suivant rétablit le son. C'était la crainte du
+    risque R7 de l'ADR-0002.
+  - Option `MuteWhileSwitching` dans `config.json` pour la désactiver.
+  - **Alternative écartée : mettre la lecture en pause puis la relancer.** On ne perdrait pas les 2 premières
+    secondes, mais ça ne marche qu'avec les lecteurs média (pas un jeu ni Discord), la relance n'est pas
+    garantie par toutes les applis, et la pause serait vue comme une pause de l'utilisateur.

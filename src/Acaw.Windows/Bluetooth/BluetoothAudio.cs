@@ -1,13 +1,13 @@
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using Acaw.Core.Hosting;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.Media.Audio;
 using Windows.Win32.Media.KernelStreaming;
 using Windows.Win32.System.Com;
 
-namespace Acaw.App.Bluetooth;
+namespace Acaw.Windows.Bluetooth;
 
 /// <summary>Un endpoint audio Bluetooth vu par Windows, par ex. « Casque (AirPods Pro) ».</summary>
 /// <param name="Id">Identifiant de l'endpoint (stable tant que l'appareil reste appairé).</param>
@@ -15,14 +15,14 @@ namespace Acaw.App.Bluetooth;
 /// <param name="Mac">Adresse Bluetooth extraite du chemin du driver, ou null si introuvable.</param>
 /// <param name="ModelId">Identifiant produit (« pid ») du chemin du driver ; chez Apple, c'est aussi le modèle annoncé en BLE.</param>
 /// <param name="IsA2dp">true pour le profil musique (A2DP), false pour le mains libres (HFP).</param>
-internal sealed record BtEndpoint(string Id, string Name, string? Mac, string? ModelId, bool IsA2dp);
+public sealed record BtEndpoint(string Id, string Name, string? Mac, string? ModelId, bool IsA2dp);
 
 /// <summary>
-/// Accès à la pile audio Bluetooth de Windows : liste des endpoints, état, et commandes
+/// Accès à la pile audio Bluetooth de Windows : liste des endpoints, état, connexion et déconnexion par
 /// KSPROPERTY_ONESHOT_RECONNECT / DISCONNECT (voir docs/adr/0001-mecanisme-bascule.md).
 /// Repris du spike de la phase 0 (spikes/Phase0/BluetoothAudio.cs), où il a été mesuré.
 /// </summary>
-internal static partial class BluetoothAudio
+public static partial class BluetoothAudio
 {
     // UUID de service Bluetooth « Audio Sink » (A2DP) tel qu'il apparaît dans le chemin du driver.
     private const string A2dpSinkUuid = "0000110b";
@@ -55,7 +55,7 @@ internal static partial class BluetoothAudio
             var mac = MacInPath().Match(ksId);
             var model = ModelInPath().Match(ksId);
             result.Add(new BtEndpoint(
-                TakeString(idPtr),
+                Com.TakeString(idPtr),
                 GetFriendlyName(device),
                 mac.Success ? FormatMac(mac.Groups[1].Value) : null,
                 model.Success ? model.Groups[1].Value.ToUpperInvariant() : null,
@@ -68,19 +68,28 @@ internal static partial class BluetoothAudio
     public static BtEndpoint? FindA2dp(string mac) =>
         ListEndpoints().FirstOrDefault(ep => ep.IsA2dp && string.Equals(ep.Mac, mac, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>État actuel de l'endpoint (ACTIVE = connecté et utilisable).</summary>
-    public static DEVICE_STATE GetState(string endpointId)
+    /// <summary>État actuel de l'endpoint.</summary>
+    public static HeadsetState GetState(string endpointId)
     {
         Enumerator.GetDevice(endpointId, out var device);
         device.GetState(out var state);
-        return state;
+        return ToHeadsetState(state);
     }
 
-    /// <summary>
-    /// Demande à Windows de connecter (ou déconnecter) le casque. L'appel rend la main tout de suite :
-    /// la connexion radio se fait ensuite, en arrière-plan.
-    /// </summary>
-    public static unsafe void SendOneShot(BtEndpoint endpoint, KSPROPERTY_BTAUDIO command)
+    /// <summary>Demande à Windows de connecter le casque. Rend la main tout de suite ; la radio travaille ensuite.</summary>
+    public static void Connect(BtEndpoint endpoint) => SendOneShot(endpoint, KSPROPERTY_BTAUDIO.KSPROPERTY_ONESHOT_RECONNECT);
+
+    /// <summary>Demande à Windows de déconnecter le casque.</summary>
+    public static void Disconnect(BtEndpoint endpoint) => SendOneShot(endpoint, KSPROPERTY_BTAUDIO.KSPROPERTY_ONESHOT_DISCONNECT);
+
+    internal static HeadsetState ToHeadsetState(DEVICE_STATE state) => state switch
+    {
+        DEVICE_STATE.DEVICE_STATE_ACTIVE => HeadsetState.Connected,
+        DEVICE_STATE.DEVICE_STATE_UNPLUGGED => HeadsetState.Disconnected,
+        _ => HeadsetState.Absent, // NOTPRESENT (Bluetooth coupé) ou DISABLED (désactivé à la main)
+    };
+
+    private static unsafe void SendOneShot(BtEndpoint endpoint, KSPROPERTY_BTAUDIO command)
     {
         var ks = OpenKsControl(endpoint.Id);
         var property = new KSIDENTIFIER();
@@ -101,7 +110,7 @@ internal static partial class BluetoothAudio
         var part = (IPart)GetDriverConnector(device);
         part.GetTopologyObject(out var driverTopology);
         driverTopology.GetDeviceId(out PWSTR driverIdPtr);
-        Enumerator.GetDevice(TakeString(driverIdPtr), out var driverDevice);
+        Enumerator.GetDevice(Com.TakeString(driverIdPtr), out var driverDevice);
         driverDevice.Activate(typeof(IKsControl).GUID, CLSCTX.CLSCTX_ALL, null, out object ks);
         return (IKsControl)ks;
     }
@@ -121,11 +130,11 @@ internal static partial class BluetoothAudio
             device.Activate(typeof(IDeviceTopology).GUID, CLSCTX.CLSCTX_ALL, null, out object topologyObj);
             ((IDeviceTopology)topologyObj).GetConnector(0, out var connector);
             connector.GetDeviceIdConnectedTo(out PWSTR ksIdPtr);
-            return TakeString(ksIdPtr);
+            return Com.TakeString(ksIdPtr);
         }
-        catch (COMException)
+        catch (Exception e) when (Com.IsComFailure(e))
         {
-            return null; // endpoint désactivé ou sans topologie lisible
+            return null; // endpoint désactivé, virtuel ou sans topologie lisible : pas un casque Bluetooth
         }
     }
 
@@ -138,24 +147,17 @@ internal static partial class BluetoothAudio
             try
             {
                 PInvoke.PropVariantToStringAlloc(in value, out PWSTR namePtr).ThrowOnFailure();
-                return TakeString(namePtr);
+                return Com.TakeString(namePtr);
             }
             finally
             {
                 PInvoke.PropVariantClear(ref value);
             }
         }
-        catch (COMException)
+        catch (Exception e) when (Com.IsComFailure(e))
         {
             return "(nom illisible)";
         }
-    }
-
-    /// <summary>Copie une chaîne allouée par Windows puis libère la mémoire (sinon : fuite).</summary>
-    private static unsafe string TakeString(PWSTR ptr)
-    {
-        try { return ptr.ToString(); }
-        finally { Marshal.FreeCoTaskMem((nint)ptr.Value); }
     }
 
     private static string FormatMac(string hex12) =>

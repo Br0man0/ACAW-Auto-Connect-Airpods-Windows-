@@ -6,8 +6,8 @@ namespace Acaw.Core.Ble;
 /// Partie en clair d'une trame « proximity pairing » (type 0x07) des AirPods.
 /// Signification des champs établie pendant la phase 0 : voir docs/protocole-ble-airpods.md.
 /// </summary>
-/// <param name="Model">Modèle, égal au « pid » du driver Bluetooth classique (ex. « 2027 »).</param>
-public sealed record ProximityFrame(string Model, byte Status, byte Batteries, byte ChargeAndCase, byte Lid, byte Color)
+/// <param name="Model">Modèle, égal au « pid » du driver Bluetooth classique (ex. 0x2027).</param>
+public sealed record ProximityFrame(ushort Model, byte Status, byte Batteries, byte ChargeAndCase, byte Lid, byte Color)
 {
     /// <summary>Nombre d'écouteurs portés (bits 0x02 et 0x08 du statut). Le côté n'est pas connu.</summary>
     public int PodsInEar => BitOperations.PopCount((uint)(Status & 0x0A));

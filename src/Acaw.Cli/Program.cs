@@ -1,16 +1,15 @@
-// ACAW en ligne de commande (phase 1). La bascule automatique arrivera en phase 2.
+// ACAW en ligne de commande. La bascule automatique est faite par acaw-tray.exe.
 // Mode d'emploi : docs/guide/06-utiliser-acaw.md
 
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
-using Acaw.App.Ble;
-using Acaw.App.Bluetooth;
 using Acaw.Core.Ble;
 using Acaw.Core.Config;
-using Windows.Win32.Media.Audio;
-using Windows.Win32.Media.KernelStreaming;
+using Acaw.Core.Hosting;
+using Acaw.Windows.Ble;
+using Acaw.Windows.Bluetooth;
 
 Console.OutputEncoding = Encoding.UTF8;
 
@@ -25,11 +24,13 @@ const string Usage = """
 const string BluetoothOff = "Bluetooth du PC coupé (ou casque absent pour Windows).";
 
 string configPath = ConfigStore.DefaultPath;
-var config = ConfigStore.Load(configPath);
+string? command = args.FirstOrDefault();
+var config = new AcawConfig();
 
 try
 {
-    return args.FirstOrDefault() switch
+    config = LoadConfig();
+    return command switch
     {
         "setup" => Setup(args.ElementAtOrDefault(1)),
         "status" => Status(),
@@ -41,6 +42,11 @@ try
 catch (UserError e)
 {
     Console.WriteLine(e.Message);
+    return 1;
+}
+catch (InvalidDataException e)
+{
+    Console.WriteLine($"{e.Message}{Environment.NewLine}Relance « acaw setup » pour la recréer.");
     return 1;
 }
 catch (InvalidCastException)
@@ -89,10 +95,10 @@ int Status()
     Console.WriteLine($"AirPods : {ep.Name} (modèle {config.ModelId})");
     Console.WriteLine($"Sur ce PC : {Describe(BluetoothAudio.GetState(ep.Id))}");
 
-    if (config.ModelId is null) return 0;
+    if (config.ModelNumber is not { } model) return 0;
     Console.Write("Écoute BLE pendant 5 s… ");
     ProximityFrame? last = null;
-    using (var scanner = new BleScanner(config.ModelId))
+    using (var scanner = new BleScanner(model))
     {
         scanner.FrameReceived += frame => last = frame;
         scanner.Start();
@@ -114,11 +120,10 @@ int Switch()
 {
     var ep = RequireEndpoint();
     var state = BluetoothAudio.GetState(ep.Id);
-    if (state == DEVICE_STATE.DEVICE_STATE_ACTIVE) throw new UserError("Les AirPods sont déjà sur ce PC.");
-    if (state == DEVICE_STATE.DEVICE_STATE_NOTPRESENT) throw new UserError(BluetoothOff);
+    if (state == HeadsetState.Connected) throw new UserError("Les AirPods sont déjà sur ce PC.");
+    if (state == HeadsetState.Absent) throw new UserError(BluetoothOff);
 
-    var (ok, elapsed) = SendAndWait(ep, KSPROPERTY_BTAUDIO.KSPROPERTY_ONESHOT_RECONNECT,
-                                    s => s == DEVICE_STATE.DEVICE_STATE_ACTIVE);
+    var (ok, elapsed) = SendAndWait(ep, BluetoothAudio.Connect, s => s == HeadsetState.Connected);
     Console.WriteLine(ok
         ? $"AirPods sur ce PC en {elapsed.TotalMilliseconds:F0} ms."
         : "Les AirPods ne sont pas venus. Boîtier fermé ou hors de portée ?");
@@ -128,28 +133,41 @@ int Switch()
 int Release()
 {
     var ep = RequireEndpoint();
-    if (BluetoothAudio.GetState(ep.Id) != DEVICE_STATE.DEVICE_STATE_ACTIVE)
+    if (BluetoothAudio.GetState(ep.Id) != HeadsetState.Connected)
         throw new UserError("Les AirPods ne sont pas sur ce PC.");
 
-    var (ok, _) = SendAndWait(ep, KSPROPERTY_BTAUDIO.KSPROPERTY_ONESHOT_DISCONNECT,
-                              s => s != DEVICE_STATE.DEVICE_STATE_ACTIVE);
+    var (ok, _) = SendAndWait(ep, BluetoothAudio.Disconnect, s => s != HeadsetState.Connected);
     Console.WriteLine(ok ? "AirPods rendus : l'iPhone va les reprendre." : "Les AirPods sont toujours connectés.");
     return ok ? 0 : 2;
 }
 
 // Envoie l'ordre puis attend que Windows signale le nouvel état. On s'abonne AVANT d'envoyer l'ordre,
 // pour ne pas rater une notification qui arriverait très vite.
-(bool Ok, TimeSpan Elapsed) SendAndWait(BtEndpoint ep, KSPROPERTY_BTAUDIO command, Func<DEVICE_STATE, bool> done)
+(bool Ok, TimeSpan Elapsed) SendAndWait(BtEndpoint ep, Action<BtEndpoint> order, Func<HeadsetState, bool> done)
 {
     using var reached = new ManualResetEventSlim();
     using var watcher = new EndpointWatcher(ep.Id);
     watcher.StateChanged += state => { if (done(state)) reached.Set(); };
 
     var clock = Stopwatch.StartNew();
-    BluetoothAudio.SendOneShot(ep, command);
+    order(ep);
     bool ok = reached.Wait(config.Switching.SwitchTimeout)
               || done(BluetoothAudio.GetState(ep.Id)); // filet de sécurité si la notification a été manquée
     return (ok, clock.Elapsed);
+}
+
+// Une configuration abîmée bloque toutes les commandes, sauf setup qui sert justement à la refaire.
+AcawConfig LoadConfig()
+{
+    try
+    {
+        return ConfigStore.Load(configPath);
+    }
+    catch (InvalidDataException) when (command == "setup")
+    {
+        Console.WriteLine("Configuration illisible : elle va être remplacée.");
+        return new AcawConfig();
+    }
 }
 
 BtEndpoint RequireEndpoint()
@@ -159,12 +177,11 @@ BtEndpoint RequireEndpoint()
         ?? throw new UserError($"{config.Name} n'est plus appairé à ce PC. Ré-appaire-le puis relance « acaw setup ».");
 }
 
-static string Describe(DEVICE_STATE state) => state switch
+static string Describe(HeadsetState state) => state switch
 {
-    DEVICE_STATE.DEVICE_STATE_ACTIVE => "connectés",
-    DEVICE_STATE.DEVICE_STATE_UNPLUGGED => "non (ailleurs ou libres)",
-    DEVICE_STATE.DEVICE_STATE_NOTPRESENT => BluetoothOff,
-    _ => state.ToString(),
+    HeadsetState.Connected => "connectés",
+    HeadsetState.Disconnected => "non (ailleurs ou libres)",
+    _ => BluetoothOff,
 };
 
 static string Pct(int? value) => value is null ? "—" : $"{value} %";

@@ -1,9 +1,10 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
 using Acaw.Core.Switching;
 
 namespace Acaw.Core.Config;
 
-/// <summary>Réglages d'ACAW, enregistrés par « acaw setup ».</summary>
+/// <summary>Réglages d'ACAW, enregistrés par « acaw setup » et par le menu de la barre des tâches.</summary>
 public sealed record AcawConfig
 {
     /// <summary>Adresse MAC des AirPods choisis (ex. « A1:B2:C3:D4:E5:F6 »).</summary>
@@ -15,8 +16,16 @@ public sealed record AcawConfig
     /// <summary>Nom affiché par Windows, pour information seulement.</summary>
     public string? Name { get; init; }
 
+    /// <summary>Bascule automatique active. Le menu permet de la suspendre sans quitter l'application.</summary>
+    public bool AutoSwitch { get; init; } = true;
+
     public SwitchOptions Switching { get; init; } = new();
 
     [JsonIgnore] // calculé, pas enregistré
     public bool IsConfigured => Mac is not null;
+
+    /// <summary>Le modèle sous forme de nombre (« 2027 » → 0x2027), comme dans les trames BLE ; null si absent ou invalide.</summary>
+    [JsonIgnore]
+    public ushort? ModelNumber =>
+        ushort.TryParse(ModelId, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var model) ? model : null;
 }

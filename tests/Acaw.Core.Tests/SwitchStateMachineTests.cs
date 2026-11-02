@@ -13,7 +13,10 @@ public class SwitchStateMachineTests
     private readonly FakeTimeProvider _time = new();
     private readonly SwitchStateMachine _machine;
 
-    public SwitchStateMachineTests() => _machine = new SwitchStateMachine(new SwitchOptions(), _time);
+    // La sourdine (R7) est désactivée ici pour vérifier les autres règles seules : elle a ses propres tests
+    // dans SpeakerMuteRuleTests, et les invariants tournent avec les réglages par défaut.
+    public SwitchStateMachineTests() =>
+        _machine = new SwitchStateMachine(new SwitchOptions { MuteWhileSwitching = false }, _time);
 
     private IReadOnlyList<SwitchCommand> Send(SwitchEvent e) => _machine.Handle(e);
 
@@ -86,6 +89,42 @@ public class SwitchStateMachineTests
     }
 
     [Fact]
+    public void R2_Pause_pendant_la_connexion_rend_les_AirPods_5_s_apres_leur_arrivee()
+    {
+        Send(new AirPodsSeen());
+        Send(new PlaybackStarted());
+        Send(new PlaybackPaused());     // pause avant que les AirPods soient arrivés
+        Send(new EndpointConnected());
+
+        Assert.Empty(After(4.9));
+        Assert.Equal([Disconnect], After(0.2));
+    }
+
+    [Fact]
+    public void Lecture_pendant_la_relache_reprend_les_AirPods_une_fois_relaches()
+    {
+        PlayingOnWindows();
+        Send(new PlaybackPaused());
+        Assert.Equal([Disconnect], After(5.1));
+
+        // L'utilisateur relance la vidéo pendant que la déconnexion est en cours.
+        Assert.Empty(Send(new PlaybackStarted()));
+
+        Assert.Equal([Reconnect], Send(new EndpointDisconnected()));
+        Assert.Equal(SwitchState.Switching, _machine.State);
+    }
+
+    [Fact]
+    public void R4_Relache_demandee_pendant_la_lecture_ne_reprend_pas_ensuite()
+    {
+        PlayingOnWindows();
+        Send(new ReleaseRequested());
+
+        Assert.Empty(Send(new EndpointDisconnected()));
+        Assert.Equal(SwitchState.Away, _machine.State);
+    }
+
+    [Fact]
     public void R3_Silence_sans_pause_rend_les_AirPods_apres_30_s()
     {
         PlayingOnWindows();
@@ -154,6 +193,55 @@ public class SwitchStateMachineTests
     }
 
     [Fact]
+    public void Amener_a_la_main_marche_meme_AirPods_non_vus_en_BLE()
+    {
+        Assert.Equal([Reconnect], Send(new TakeRequested()));
+        Assert.Equal(SwitchState.Switching, _machine.State);
+    }
+
+    [Fact]
+    public void Amener_a_la_main_passe_outre_le_cooldown()
+    {
+        PlayingOnWindows();
+        Send(new EndpointDisconnected()); // l'iPhone les a pris
+        _time.Advance(TimeSpan.FromSeconds(1));
+
+        Assert.Equal([Reconnect], Send(new TakeRequested()));
+    }
+
+    [Fact]
+    public void Amenes_a_la_main_sans_lecture_ne_sont_pas_rendus_pour_silence()
+    {
+        Send(new TakeRequested());
+        Send(new EndpointConnected());
+
+        Assert.Empty(After(120)); // un appel, une écoute en attente… : ils restent
+        Assert.Equal(SwitchState.OnWindows, _machine.State);
+    }
+
+    [Fact]
+    public void Amenes_a_la_main_puis_lecture_puis_pause_sont_rendus_normalement()
+    {
+        Send(new TakeRequested());
+        Send(new EndpointConnected());
+        Send(new PlaybackStarted());
+        Send(new PlaybackPaused());
+
+        Assert.Equal([Disconnect], After(5.1));
+    }
+
+    [Fact]
+    public void Amener_pendant_la_relache_les_reprend_une_fois_relaches()
+    {
+        PlayingOnWindows();
+        Send(new ReleaseRequested());
+        Send(new PlaybackPaused());
+        Send(new TakeRequested());
+
+        Assert.Equal([Reconnect], Send(new EndpointDisconnected()));
+    }
+
+    [Fact]
     public void Connexion_trop_longue_abandonne()
     {
         Send(new AirPodsSeen());
@@ -178,9 +266,23 @@ public class SwitchStateMachineTests
     {
         PlayingOnWindows();
         Send(new ReleaseRequested());
+        Send(new PlaybackPaused()); // effet de la commande PauseMedia
 
         Assert.Empty(After(31));
         Assert.Equal(SwitchState.OnWindows, _machine.State);
         Assert.Equal([Disconnect], After(30.1));
+    }
+
+    [Fact]
+    public void Deconnexion_non_confirmee_avec_lecture_reprise_garde_les_AirPods()
+    {
+        PlayingOnWindows();
+        Send(new PlaybackPaused());
+        After(5.1);                  // relâche envoyée
+        Send(new PlaybackStarted()); // l'utilisateur relance pendant la relâche
+
+        Assert.Empty(After(31));     // la déconnexion n'est jamais confirmée
+        Assert.Equal(SwitchState.OnWindows, _machine.State);
+        Assert.Empty(After(60));     // ça joue : pas de nouvelle relâche
     }
 }

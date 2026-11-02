@@ -14,7 +14,7 @@ public class AppleAdvertisementParserTests
     {
         var frame = AppleAdvertisementParser.TryParse(Frame(0x0B));
 
-        Assert.Equal("2027", frame?.Model);
+        Assert.Equal((ushort)0x2027, frame?.Model);
     }
 
     [Theory]

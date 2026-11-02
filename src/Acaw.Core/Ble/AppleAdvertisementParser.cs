@@ -24,8 +24,9 @@ public static class AppleAdvertisementParser
             if (type == ProximityPairingType && length >= MinimumLength)
             {
                 var v = appleData.Slice(i + 2, length);
-                // Le modèle est écrit octet de poids faible d'abord : 27 20 → 0x2027.
-                return new ProximityFrame($"{v[2]:X2}{v[1]:X2}", v[3], v[4], v[5], v[6], v[7]);
+                // Le modèle est écrit octet de poids faible d'abord : 27 20 → 0x2027. Un nombre plutôt
+                // qu'une chaîne : aucune allocation, même avec des dizaines d'appareils Apple autour.
+                return new ProximityFrame((ushort)(v[1] | v[2] << 8), v[3], v[4], v[5], v[6], v[7]);
             }
             i += 2 + length;
         }

@@ -11,4 +11,10 @@ public enum SwitchCommand
 
     /// <summary>Mettre en pause les médias du PC (règle R6 de l'ADR-0003).</summary>
     PauseMedia,
+
+    /// <summary>Couper la sortie son actuelle (les haut-parleurs) pendant que les AirPods arrivent (règle R7).</summary>
+    MuteSpeakers,
+
+    /// <summary>Rétablir la sortie coupée par <see cref="MuteSpeakers"/>.</summary>
+    UnmuteSpeakers,
 }

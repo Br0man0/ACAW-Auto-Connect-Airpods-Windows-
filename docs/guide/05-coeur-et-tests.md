@@ -77,7 +77,7 @@ le résultat. On les lance tous d'un coup :
 dotnet test
 ```
 
-Résultat attendu : `Réussi! - échec: 0, réussite: 26`. Si un test échoue, la sortie dit lequel, ce qui
+Résultat attendu : `Réussi! - échec: 0, réussite: 93` pour le cœur (et 9 de plus pour les tests fumée Windows). Si un test échoue, la sortie dit lequel, ce qui
 était attendu et ce qui a été obtenu.
 
 Le projet utilise **xUnit** :
@@ -113,6 +113,11 @@ public void Scenario_de_l_ADR_video_mise_en_pause_puis_AirPods_rendus_apres_5_s(
 | `SwitchStateMachineTests.cs` | les règles R1 à R6 de l'ADR-0003, plus : AirPods endormis, connexion trop longue, connexion non demandée, déconnexion non confirmée |
 | `AppleAdvertisementParserTests.cs` | le décodage BLE, sur des trames reconstruites depuis les relevés des tests C1 et C3 |
 | `ConfigStoreTests.cs` | l'enregistrement puis la relecture de la configuration |
+| `AudioActivityTrackerTests.cs` | « est-ce que le PC joue ? » : médias, sons de jeu, notifications |
+| `AcawHostTests.cs` | l’hôte complet avec de faux ports : des situations réelles de bout en bout |
+| `InvariantTests.cs` | des milliers de séquences aléatoires et les règles qui doivent toujours tenir |
+
+Le détail de la stratégie (pyramide, invariants, recette) est dans le [guide 8](08-strategie-de-test.md).
 
 ### Ajouter un test
 

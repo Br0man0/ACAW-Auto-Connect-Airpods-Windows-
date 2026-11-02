@@ -1,6 +1,6 @@
 # ACAW : Auto Connect AirPods Windows
 
-Bascule des AirPods entre un PC **Windows** et un iPhone :
+Bascule automatique des AirPods entre un PC **Windows** et un iPhone :
 - quand le PC se met à jouer du son, les AirPods quittent l'iPhone et viennent sur le PC (~2 s) ;
 - quand le PC se met en pause ou se tait, il les relâche, et l'iPhone les reprend (~2–3 s).
 
@@ -8,28 +8,29 @@ Inspiré de PodHop (Linux), avec un mécanisme propre à Windows : on demande à
 Windows de connecter ou de relâcher le casque (voir l'[ADR-0001](docs/adr/0001-mecanisme-bascule.md)).
 Aucun driver, aucun droit administrateur, aucun accès réseau.
 
-> **État : phase 1.** `acaw` pilote les AirPods à la demande (`switch`, `release`) et affiche leur
-> état. La bascule automatique arrive en phase 2.
+> **État : phase 2.** `acaw-tray.exe` fait la bascule automatique depuis la barre des tâches, sans
+> console, et peut démarrer avec Windows. `acaw.exe` sert à la configuration et au diagnostic.
 
-## Démarrage rapide (5 minutes)
+## Démarrage rapide
 
 Prérequis : Windows 10/11, Bluetooth activé, AirPods appairés au PC, [SDK .NET 10](https://dotnet.microsoft.com/download).
 
 1. Retirer le profil « Mains libres » des AirPods (sinon une bascule prend 10 s au lieu de 2) : voir le
-   [guide d'utilisation](docs/guide/06-utiliser-acaw.md#une-seule-fois--préparer-les-airpods).
-2. Choisir les AirPods :
+   [guide d'utilisation](docs/guide/06-utiliser-acaw.md#une-seule-fois--installer).
+2. Construire les deux programmes :
    ```bash
-   dotnet run --project src/Acaw.App -- setup
-   ```
-3. Les amener sur le PC, puis les rendre :
-   ```bash
-   dotnet run --project src/Acaw.App -- switch
+   dotnet publish src/Acaw.Tray -c Release -o "%LOCALAPPDATA%\Programs\ACAW"
    ```
    ```bash
-   dotnet run --project src/Acaw.App -- release
+   dotnet publish src/Acaw.Cli -c Release -o "%LOCALAPPDATA%\Programs\ACAW"
    ```
+3. Choisir les AirPods :
+   ```bash
+   "%LOCALAPPDATA%\Programs\ACAW\acaw.exe" setup
+   ```
+4. Lancer `acaw-tray.exe` depuis ce dossier, puis cocher « Démarrer avec Windows » dans le menu de l'icône.
 
-Lancer les tests :
+Lancer les tests (102 tests, quelques secondes) :
 
 ```bash
 dotnet test
@@ -44,8 +45,10 @@ dotnet test
 3. [Le spike de la phase 0 expliqué](docs/guide/03-spike-phase0-explique.md) : l'accès au Bluetooth, pas à pas
 4. [Protocole de test de la phase 0](docs/guide/04-protocole-test-phase0.md) : les mesures et leurs résultats
 5. [Le cœur et ses tests](docs/guide/05-coeur-et-tests.md) : machine à états, `TimeProvider`, xUnit
-6. [Utiliser acaw](docs/guide/06-utiliser-acaw.md) : commandes et dépannage
-7. [Glossaire](docs/glossaire.md) : Bluetooth, audio Windows, .NET
+6. [Utiliser ACAW](docs/guide/06-utiliser-acaw.md) : installation, menu, commandes, dépannage
+7. [L'application résidente](docs/guide/07-application-residente.md) : file d'événements, ports, WinForms
+8. [Stratégie de test](docs/guide/08-strategie-de-test.md) : pyramide, invariants, recette manuelle
+9. [Glossaire](docs/glossaire.md) : Bluetooth, audio Windows, .NET
 
 Référence : [annonces BLE des AirPods, ce qu'on sait](docs/protocole-ble-airpods.md)
 
@@ -59,8 +62,8 @@ Décisions d'architecture :
 
 | Phase | Objectif | État |
 |---|---|---|
-| 0 | Faisabilité : reconnexion chronométrée, retour iPhone, annonces BLE | ✅ ([résultats](docs/adr/0001-mecanisme-bascule.md#constats-de-la-phase-0)) · comportement après la veille à établir |
+| 0 | Faisabilité : reconnexion chronométrée, retour iPhone, annonces BLE | ✅ ([résultats](docs/adr/0001-mecanisme-bascule.md#constats-de-la-phase-0)) |
 | 1 | Cœur (machine à états, décodage BLE, configuration) + `acaw setup / status / switch / release` | ✅ |
-| 2 | Bascule automatique (détection de la lecture), barre des tâches, démarrage auto | ⏳ |
+| 2 | Bascule automatique, application barre des tâches sans console, démarrage avec Windows | ✅ code et tests · recette manuelle en cours |
 | 3 | Optimisation de la vitesse, mesurée | ⏳ |
 | 4 | Pause au retrait d'un écouteur | ⏳ |

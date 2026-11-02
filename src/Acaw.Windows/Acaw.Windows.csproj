@@ -1,14 +1,13 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- Bibliothèque partagée par acaw.exe et acaw-tray.exe : tout ce qui parle à Windows. -->
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <!-- "-windows10.0.19041.0" donne accès aux API Windows (BLE, etc.) -->
+    <!-- "-windows10.0.19041.0" donne accès aux API Windows (BLE, contrôles média…) -->
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <!-- Le code d'interop COM généré par CsWin32 manipule des pointeurs -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <AssemblyName>acaw</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>

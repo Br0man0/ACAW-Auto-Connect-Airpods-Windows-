@@ -16,3 +16,8 @@ PropVariantToStringAlloc
 PropVariantClear
 STGM
 IMMNotificationClient
+IAudioSessionManager2
+IAudioSessionEnumerator
+IAudioSessionControl2
+IAudioMeterInformation
+IAudioEndpointVolume

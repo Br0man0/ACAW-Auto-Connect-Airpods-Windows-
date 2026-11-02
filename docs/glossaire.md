@@ -28,7 +28,8 @@
 | **Core Audio / MMDevice** | Les API Windows pour lister les endpoints et suivre leur état. |
 | **Sortie par défaut** | L'endpoint où va le son des applications qui ne choisissent pas. |
 | **WASAPI** | API audio bas niveau. Permet aussi de savoir quelles applications jouent du son. |
-| **SMTC** | « System Media Transport Controls » : ce qui affiche le lecteur dans le panneau du volume. Dit si Spotify, le navigateur… sont en lecture. |
+| **Volume crête** | Niveau maximal du son à un instant, de 0 (silence) à 1. ACAW le lit toutes les 250 ms pour détecter les sons sans lecteur média. |
+| **SMTC** | « System Media Transport Controls » : ce qui affiche le lecteur dans le panneau du volume. Dit si Spotify, le navigateur… sont en lecture, et permet de les mettre en pause. |
 | **Kernel Streaming (KS)** | Couche des drivers audio. Le « filtre KS » Bluetooth est le driver de ton casque. |
 | **`IKsControl`** | Interface pour envoyer des propriétés à un filtre KS. |
 | **`KSPROPERTY_ONESHOT_RECONNECT`** | Propriété qui demande au driver Bluetooth de connecter le casque. |
@@ -54,6 +55,17 @@
 | **Injection de dépendances** | Recevoir ce dont on a besoin (horloge, réglages) par le constructeur au lieu d'aller le chercher soi-même. |
 | **`record`** | Classe faite pour porter des données : propriétés, comparaison et affichage générés automatiquement. |
 | **`enum`** | Liste fermée de valeurs nommées, par ex. les états `Away`, `Switching`… |
+| **Interface** | Contrat : « je sais faire ceci », sans dire comment. Plusieurs classes peuvent le remplir (vraie ou fausse). |
+| **Ports et adaptateurs** | Architecture où la logique décrit ses besoins par des interfaces (ports), remplies par du code Windows ou par des faux en test (adaptateurs). |
+| **Thread** | Fil d'exécution. Plusieurs threads tournent en même temps ; s'ils modifient les mêmes données sans précaution, c'est une **condition de course**. |
+| **`Channel`** | File d'attente de .NET : plusieurs threads y déposent, un seul lit. Utilisée par l'hôte pour traiter les événements un par un. |
+| **WinExe** | Type d'exécutable sans console (`<OutputType>WinExe</OutputType>`), utilisé par `acaw-tray.exe`. |
+| **WinForms** | Bibliothèque d'interface historique de Windows. `NotifyIcon` = icône de la barre des tâches, `ContextMenuStrip` = menu du clic droit. |
+| **Test d'intégration** | Test qui assemble plusieurs pièces réelles (ici : l'hôte, la file, le tracker, la machine) et ne remplace que l'extérieur. |
+| **Test fumée** | Test rapide qui vérifie que les branchements réels répondent, sans tester les règles en détail. |
+| **Invariant** | Règle qui doit toujours être vraie, quelle que soit la suite d'événements. |
+| **Couverture** | Part du code exécutée par les tests (lignes, branches). |
+| **Recette** | Vérification manuelle, dans les conditions réelles, avant de déclarer une phase terminée. |
 
 ## Méthode
 
