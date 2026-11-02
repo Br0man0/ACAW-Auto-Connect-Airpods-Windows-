@@ -77,3 +77,15 @@
 | **Machine à états** | Logique qui passe d'un état à l'autre selon les événements (Idle → Switching → OnWindows…). |
 | **Cooldown** | Pause imposée après un événement, pour éviter les va-et-vient. |
 | **Backoff** | Attente de plus en plus longue entre deux tentatives ratées. |
+
+## Contrôle automatique
+
+| Terme | Définition |
+|---|---|
+| **CI (intégration continue)** | Compiler et tester automatiquement à chaque modification, pour repérer une erreur tout de suite. |
+| **GitHub Actions** | Le service de GitHub qui exécute la CI sur ses propres machines. |
+| **Workflow** | Fichier `.github/workflows/*.yml` qui décrit les étapes du contrôle et quand le lancer. |
+| **Artefact** | Fichier produit par un contrôle (résultats, exécutables), téléchargeable depuis sa page. |
+| **Badge** | Petite image dans le README qui affiche l'état du dernier contrôle (vert ou rouge). |
+| **`global.json`** | Fichier qui fixe la version du SDK .NET : la même sur ton PC et sur GitHub. |
+| **`-warnaserror`** | Option de compilation qui transforme chaque avertissement en erreur. |

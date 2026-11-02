@@ -1,0 +1,80 @@
+# Contrôle automatique d'ACAW : compile, teste et publie à chaque push et à chaque pull request.
+# Explications pas à pas : docs/guide/08-strategie-de-test.md, section « Contrôle automatique ».
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: # bouton « Run workflow » sur la page Actions
+
+# Un nouveau push sur la même branche annule le contrôle encore en cours : inutile de finir l'ancien.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Compilation et tests (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer .NET (version fixée par global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restaurer les paquets NuGet
+        run: dotnet restore ACAW.sln
+
+      # -warnaserror : le moindre avertissement fait échouer le contrôle (on garde « 0 avertissement »).
+      - name: Compiler (Release, avertissements = erreurs)
+        run: dotnet build ACAW.sln -c Release --no-restore -warnaserror
+
+      # Les tests fumée (Categorie=Windows) sont exclus : cette machine n'a ni Bluetooth ni carte son.
+      # Ils se lancent sur un vrai PC avant chaque version.
+      - name: Lancer les tests
+        run: >
+          dotnet test ACAW.sln -c Release --no-build
+          --filter "Categorie!=Windows"
+          --collect:"XPlat Code Coverage"
+          --logger trx
+          --results-directory TestResults
+
+      - name: Vérifier la couverture du cœur (seuil 90 %)
+        shell: pwsh
+        run: ./build/check-coverage.ps1 -ResultsDirectory TestResults -Package Acaw.Core -Threshold 90
+
+      # Une étape par commande : dans une étape à plusieurs lignes, seul l'échec de la DERNIÈRE serait vu.
+      - name: Publier acaw-tray.exe
+        run: dotnet publish src/Acaw.Tray -c Release --no-build -o publish
+
+      - name: Publier acaw.exe
+        run: dotnet publish src/Acaw.Cli -c Release --no-build -o publish
+
+      # Téléchargeables depuis la page du contrôle, même en cas d'échec des tests (pour comprendre).
+      - name: Joindre les résultats des tests et la couverture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultats-tests
+          path: TestResults
+          retention-days: 14
+
+      - name: Joindre les exécutables
+        uses: actions/upload-artifact@v4
+        with:
+          name: acaw-windows
+          path: publish
+          retention-days: 14

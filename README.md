@@ -1,5 +1,7 @@
 # ACAW : Auto Connect AirPods Windows
 
+[![CI](https://github.com/Br0man0/ACAW-Auto-Connect-Airpods-Windows-/actions/workflows/ci.yml/badge.svg)](https://github.com/Br0man0/ACAW-Auto-Connect-Airpods-Windows-/actions/workflows/ci.yml)
+
 Bascule automatique des AirPods entre un PC **Windows** et un iPhone :
 - quand le PC se met à jouer du son, les AirPods quittent l'iPhone et viennent sur le PC (~2 s) ;
 - quand le PC se met en pause ou se tait, il les relâche, et l'iPhone les reprend (~2–3 s).

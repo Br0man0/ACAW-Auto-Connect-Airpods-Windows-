@@ -36,6 +36,55 @@ Seulement ce qui ne dépend pas de Windows (sur une autre machine, par exemple) 
 dotnet test --filter "Categorie!=Windows"
 ```
 
+## Le contrôle automatique (GitHub Actions)
+
+À chaque `git push` sur `main` et à chaque pull request, GitHub lance tout seul, sur une machine Windows
+neuve, le fichier [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) :
+
+| Étape | Échoue si… |
+|---|---|
+| installer .NET (version fixée par `global.json`) | — |
+| compiler en Release avec `-warnaserror` | une erreur, **ou le moindre avertissement** |
+| lancer les tests (sans les tests fumée) | un seul test échoue |
+| vérifier la couverture (`build/check-coverage.ps1`) | `Acaw.Core` passe sous 90 % des lignes couvertes |
+| publier `acaw-tray.exe` et `acaw.exe` | l'application ne se construit pas |
+
+Les **tests fumée** ne tournent pas sur GitHub : la machine n'a ni Bluetooth ni carte son, ils y
+échoueraient pour de mauvaises raisons. Lance-les sur ton PC avant chaque version (`dotnet test`).
+
+**Où voir le résultat ?**
+- le badge en haut du README : vert = tout passe, rouge = quelque chose a cassé ;
+- sur GitHub, onglet **Actions** : la liste des contrôles, avec le détail de chaque étape ;
+- à côté de chaque commit sur GitHub : ✓ vert ou ✗ rouge.
+
+**Quand c'est rouge :**
+1. Onglet Actions → cliquer sur le contrôle rouge → ouvrir l'étape en ✗ : le message dit quel test ou
+   quel avertissement pose problème.
+2. En bas de la page, **Artifacts** : `resultats-tests` (détail des tests et couverture) et `acaw-windows`
+   (les exécutables construits, utiles pour essayer une version sans compiler).
+3. Reproduire en local, puis corriger :
+   ```bash
+   dotnet build -c Release -warnaserror
+   ```
+   ```bash
+   dotnet test --filter "Categorie!=Windows"
+   ```
+4. Pour relancer un contrôle sans rien changer : bouton **Re-run jobs**. Pour en lancer un à la main :
+   onglet Actions → **CI** → **Run workflow**.
+
+Vérifier la couverture à la main :
+
+```bash
+dotnet test tests/Acaw.Core.Tests --collect:"XPlat Code Coverage" --results-directory TestResults
+```
+
+```bash
+powershell -ExecutionPolicy Bypass -File build/check-coverage.ps1 -ResultsDirectory TestResults
+```
+
+> `TestResults/` est ignoré par git. Le seuil de 90 % a été vérifié dans les deux sens : il passe à 98,4 %
+> et bloque bien quand on l'élève à 99,9 %.
+
 ## Les tests d'invariants : « tous les cas possibles »
 
 On ne peut pas écrire à la main toutes les combinaisons d'événements. Les tests d'invariants en
