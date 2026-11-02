@@ -1,0 +1,39 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "spikes", "spikes", "{674B3D0D-B3C1-BDFD-64ED-056E74CE37B3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Phase0", "spikes\Phase0\Phase0.csproj", "{B6C4C569-6789-4245-AE6A-FE14C5667568}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B6C4C569-6789-4245-AE6A-FE14C5667568}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B6C4C569-6789-4245-AE6A-FE14C5667568}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B6C4C569-6789-4245-AE6A-FE14C5667568}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B6C4C569-6789-4245-AE6A-FE14C5667568}.Debug|x64.Build.0 = Debug|Any CPU
+		{B6C4C569-6789-4245-AE6A-FE14C5667568}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B6C4C569-6789-4245-AE6A-FE14C5667568}.Debug|x86.Build.0 = Debug|Any CPU
+		{B6C4C569-6789-4245-AE6A-FE14C5667568}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B6C4C569-6789-4245-AE6A-FE14C5667568}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B6C4C569-6789-4245-AE6A-FE14C5667568}.Release|x64.ActiveCfg = Release|Any CPU
+		{B6C4C569-6789-4245-AE6A-FE14C5667568}.Release|x64.Build.0 = Release|Any CPU
+		{B6C4C569-6789-4245-AE6A-FE14C5667568}.Release|x86.ActiveCfg = Release|Any CPU
+		{B6C4C569-6789-4245-AE6A-FE14C5667568}.Release|x86.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{B6C4C569-6789-4245-AE6A-FE14C5667568} = {674B3D0D-B3C1-BDFD-64ED-056E74CE37B3}
+	EndGlobalSection
+EndGlobal

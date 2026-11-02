@@ -1,0 +1,17 @@
+MMDeviceEnumerator
+IMMDeviceEnumerator
+IMMDeviceCollection
+IMMDevice
+IDeviceTopology
+IConnector
+IPart
+IKsControl
+KSPROPSETID_BtAudio
+KSPROPERTY_BTAUDIO
+KSPROPERTY_TYPE_GET
+DEVICE_STATE
+DEVICE_STATEMASK_ALL
+PKEY_Device_FriendlyName
+PropVariantToStringAlloc
+PropVariantClear
+STGM
