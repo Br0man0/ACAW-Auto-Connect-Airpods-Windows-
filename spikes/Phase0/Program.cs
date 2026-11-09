@@ -2,6 +2,7 @@
 //   Test A : la reconnexion KS prend-elle les AirPods à l'iPhone, et en combien de temps ?  → connect / bench
 //   Test B : l'iPhone les reprend-il ensuite tout seul ?                                    → connect puis observation
 //   Test C : que disent les annonces BLE (boîtier ouvert, dans l'oreille) ?                  → ble, bench --ble
+//   Test D (ADR-0004) : le retrait d'un écouteur se voit-il vite et sans erreur ?             → oreille
 // Mode d'emploi : docs/guide/04-protocole-test-phase0.md
 
 using System.Diagnostics;
@@ -24,6 +25,9 @@ const string Usage = """
                                              répète connect, puis affiche médiane / p95
       ble [--secondes 120] [--modele 2027]   affiche les annonces BLE des AirPods à proximité,
                                              puis le rythme d'émission de chaque adresse
+      oreille --modele 2027 [--n 10] [--libre 600] [--label texte]
+                                             chronomètre le retrait et la remise des écouteurs (n cycles),
+                                             puis vérifie la stabilité du compte pendant --libre secondes
 
       <filtre> : une partie du nom (ex. « AirPods ») ou l'adresse MAC.
     """;
@@ -43,6 +47,12 @@ try
         "disconnect" => Disconnect(Find(Arg(1))) ? 0 : 2,
         "bench" => Bench(Find(Arg(1))),
         "ble" => Ble(),
+        "oreille" => EarTest.Run(
+            Option("--modele")?.ToUpperInvariant()
+                ?? throw new UserError("Précise le modèle des AirPods : --modele 2027 (le « modèle » affiché par list)."),
+            int.Parse(Option("--n") ?? "10", CultureInfo.InvariantCulture),
+            int.Parse(Option("--libre") ?? "0", CultureInfo.InvariantCulture),
+            Option("--label") ?? "sans-label"),
         _ => Fail(Usage),
     };
 }

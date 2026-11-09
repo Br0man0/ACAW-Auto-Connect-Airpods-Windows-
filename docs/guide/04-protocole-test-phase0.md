@@ -121,6 +121,53 @@ dotnet run --project spikes/Phase0 --no-build -- bench AirPods --n 10 --ble --la
 
 Compare la médiane avec celle de A1.
 
+## Test D : le retrait d'un écouteur se voit-il vite et sans erreur ? (ADR-0004, étape 0)
+
+Avant de coder la pause au retrait, on vérifie que le BLE est assez rapide et assez fiable pour
+mettre une vidéo en pause. La commande `oreille` te guide geste par geste. À chaque question, **appuie
+sur Entrée au moment même où tu fais le geste** : c'est ce qui déclenche le chronomètre. Le cycle est
+toujours le même : retirer un écouteur (2→1), retirer le second (1→0), en remettre un (0→1), remettre
+le second (1→2).
+
+> **Avant de commencer :** quitte ACAW (`Stop-Process -Name acaw-tray`), sinon il rendrait les AirPods
+> à l'iPhone pendant la mesure. Garde les écouteurs retirés **en main**, sans les poser dans le boîtier.
+
+**D1, AirPods sur le PC, vidéo en lecture.** Connecte les AirPods au PC (`phase0 connect AirPods`),
+lance une vidéo YouTube, puis :
+
+```bash
+dotnet run --project spikes/Phase0 -- oreille --modele 2027 --n 10 --label pc-video
+```
+
+Les lignes `[média]` montrent si Windows reçoit de lui-même une pause quand tu retires un écouteur.
+
+**D2, AirPods sur l'iPhone.** Même chose avec les AirPods connectés à l'iPhone, sans rien jouer sur le
+PC (on vérifie que la détection ne dépend pas de l'appareil connecté) :
+
+```bash
+dotnet run --project spikes/Phase0 -- oreille --modele 2027 --n 5 --label iphone
+```
+
+**D3, stabilité.** Les deux écouteurs portés pendant 10 min, connectés au PC, **sans les toucher** :
+bouge, parle, tourne la tête, mâche, penche-toi. Le compte doit rester à 2 tout le temps :
+
+```bash
+dotnet run --project spikes/Phase0 -- oreille --modele 2027 --n 0 --libre 600 --label stabilite-pc
+```
+
+**Ce que la commande affiche pour chaque geste :**
+
+| Mesure | Sens |
+|---|---|
+| 1re trame | délai entre Entrée et la première annonce qui montre le nouveau compte. Il peut être négatif si tu as appuyé un peu après le geste |
+| confirmé | délai jusqu'à la **deuxième** annonce identique de suite : ce que coûterait un filtre anti-rebond de deux trames |
+| trames périmées | annonces reçues après Entrée qui montraient encore l'ancien compte |
+| retours | annonces qui reviennent à l'ancien compte après le changement : **devrait rester à 0** |
+| valeurs inattendues | un compte qui n'est ni l'ancien ni le nouveau (par exemple 0 en retirant un seul écouteur) : **devrait rester à 0** |
+| Windows | changement d'état d'un lecteur média vu par Windows pendant le geste |
+
+Les mesures sont ajoutées à `mesures-oreille.csv` et `mesures-oreille-stabilite.csv` (séparateur `;`).
+
 ## Résultats à rapporter
 
 | Mesure | Valeur |
@@ -133,6 +180,10 @@ Compare la médiane avec celle de A1.
 | C1 : sortie de la commande `ble` | ✅ analysée |
 | C3 : écart max entre trames (paire), AirPods sur l'iPhone / sur le PC, sans y toucher 5,9 s / 2,6 s (un seul écouteur émet au repos) |
 | C2 : médiane avec BLE vs sans | ~1,7 s avec / ~2,1 s sans (contrôle `libre-controle`, mêmes conditions) → pas d'effet du scan |
+| D1 : par geste, vus / 1re trame (médiane, p95) / confirmé (p95) / retours / inattendues | |
+| D1 : Windows reçoit-il une pause des AirPods au retrait ? | |
+| D2 : mêmes mesures, AirPods sur l'iPhone | |
+| D3 : anomalies en 10 min (nombre, durée max) / écart max entre trames | |
 
 Toutes les mesures chronométrées sont aussi dans `mesures-phase0.csv` (ouvrable dans Excel,
 séparateur `;`).
@@ -145,6 +196,15 @@ séparateur `;`).
 | A2/A3 réussissent mais B ❌ | ADR-0001 acceptée, avec relâche obligatoire après silence |
 | A1 réussit, A2/A3 échouent | Essayer l'option B (`BluetoothSetServiceState`), sinon décider de l'option C |
 | A1 échoue | Diagnostiquer (Bluetooth, adaptateur, droits) avant toute autre chose |
+
+Pour le test D (pause au retrait, ADR-0004) :
+
+| Résultat | Suite |
+|---|---|
+| retraits (2→1, 1→0) vus à 100 %, p95 de la 1re trame ≤ 3 s, aucun retour ni valeur inattendue, D3 sans anomalie | on code la pause au retrait (étapes 1 à 8) |
+| critères tenus avec un filtre de deux trames, mais pas sans | idem, avec un anti-rebond de deux trames (le délai « confirmé » devient le délai réel) |
+| retraits vus en plus de 3 s (p95) | fonction utilisable mais lente : à rediscuter avant de coder |
+| anomalies en D3 ou valeurs inattendues | risque de pauses intempestives : on s'arrête, ou on cherche un autre signal |
 
 ## Dépannage
 
