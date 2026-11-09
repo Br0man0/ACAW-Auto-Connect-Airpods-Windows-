@@ -1,0 +1,75 @@
+# Publication d'une version : quand un tag « v0.4.0 » est poussé, compile, teste, construit l'installateur,
+# le teste, puis crée la GitHub Release avec l'installateur, l'archive portable et les empreintes.
+# Mode d'emploi : docs/guide/09-publier-une-version.md
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write # créer la Release
+
+jobs:
+  release:
+    name: Publier la version
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v7
+
+      - name: Installer .NET (version fixée par global.json)
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      # Le tag doit correspondre à la version de Directory.Build.props : sinon, l'installateur porterait
+      # un autre numéro que la Release.
+      # Le nom du tag passe par une variable d'environnement, jamais collé dans le script : un nom de tag
+      # contenant des guillemets ne peut donc pas y injecter de commande (recommandation de GitHub).
+      - name: Vérifier que le tag correspond à la version
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          $version = ([xml](Get-Content Directory.Build.props -Raw)).SelectSingleNode("//Version").InnerText
+          if ($env:TAG -ne "v$version") {
+            throw "Le tag $env:TAG ne correspond pas à la version v$version de Directory.Build.props."
+          }
+
+      - name: Compiler (Release, avertissements = erreurs)
+        run: dotnet build ACAW.sln -c Release -warnaserror
+
+      - name: Lancer les tests
+        run: dotnet test ACAW.sln -c Release --no-build --filter "Categorie!=Windows"
+
+      - name: Installer Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Construire l'installateur
+        shell: pwsh
+        run: ./build/build-release.ps1
+
+      - name: Tester l'installateur
+        shell: pwsh
+        run: ./build/test-installer.ps1 -Setup (Get-ChildItem artifacts/acaw-setup-*.exe).FullName
+
+      # gh est préinstallé sur les machines de GitHub ; --generate-notes liste les commits depuis la version précédente.
+      - name: Créer la GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $version = $env:TAG.TrimStart('v')
+          gh release create $env:TAG `
+            "artifacts/acaw-setup-$version.exe" "artifacts/acaw-$version-portable.zip" "artifacts/acaw-$version-sha256.txt" `
+            --title "ACAW $version" --generate-notes

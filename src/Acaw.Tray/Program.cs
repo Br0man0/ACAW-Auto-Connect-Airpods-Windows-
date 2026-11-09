@@ -13,7 +13,7 @@ internal static class Program
         // Le temps depuis le démarrage de Windows distingue un lancement à l'ouverture de session d'un lancement à la main.
         var uptime = TimeSpan.FromMilliseconds(Environment.TickCount64);
         FileLog.Write(first
-            ? $"Lancement de {Application.ExecutablePath} (Windows démarré il y a {(int)uptime.TotalHours} h {uptime.Minutes:D2} min {uptime.Seconds:D2} s)"
+            ? $"Lancement d'ACAW {Acaw.Core.AppInfo.Version} : {Application.ExecutablePath} (Windows démarré il y a {(int)uptime.TotalHours} h {uptime.Minutes:D2} min {uptime.Seconds:D2} s)"
             : "ACAW tourne déjà : ce second lancement s'arrête");
         if (!first) return;
 

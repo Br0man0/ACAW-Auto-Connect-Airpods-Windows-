@@ -24,3 +24,5 @@ IAudioEndpointVolume
 ShellLink
 IShellLinkW
 IPersistFile
+CM_Get_Device_ID_List_Size
+CM_Get_Device_ID_List

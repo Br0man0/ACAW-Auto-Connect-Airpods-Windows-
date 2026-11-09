@@ -168,6 +168,13 @@ dotnet run --project spikes/Phase0 -- oreille --modele 2027 --n 0 --libre 600 --
 
 Les mesures sont ajoutées à `mesures-oreille.csv` et `mesures-oreille-stabilite.csv` (séparateur `;`).
 
+**Résultat du 2026-11-09 (D1, 3 essais) :** le retrait du premier écouteur (2→1) n'est **jamais** vu ; les
+autres gestes le sont en 3 à 6,5 s. Au repos, un seul écouteur émet, et il ne voit pas (ou trop tard) le
+retrait de l'autre. Les autres voies (partie chiffrée des annonces, canal AAP par un driver) ont été
+étudiées puis écartées : la pause au retrait est **reportée** ([ADR-0004](../adr/0004-pause-au-retrait.md)).
+Le test D reste utile pour refaire la mesure après une mise à jour du firmware des AirPods (attendre alors
+30 s au lieu de 10).
+
 ## Résultats à rapporter
 
 | Mesure | Valeur |
@@ -180,7 +187,7 @@ Les mesures sont ajoutées à `mesures-oreille.csv` et `mesures-oreille-stabilit
 | C1 : sortie de la commande `ble` | ✅ analysée |
 | C3 : écart max entre trames (paire), AirPods sur l'iPhone / sur le PC, sans y toucher 5,9 s / 2,6 s (un seul écouteur émet au repos) |
 | C2 : médiane avec BLE vs sans | ~1,7 s avec / ~2,1 s sans (contrôle `libre-controle`, mêmes conditions) → pas d'effet du scan |
-| D1 : par geste, vus / 1re trame (médiane, p95) / confirmé (p95) / retours / inattendues | |
+| D1 : par geste, vus / 1re trame (médiane, p95) / confirmé (p95) / retours / inattendues | 2→1 jamais vu (3 essais) ; autres gestes 3 à 6,5 s → ❌ |
 | D1 : Windows reçoit-il une pause des AirPods au retrait ? | |
 | D2 : mêmes mesures, AirPods sur l'iPhone | |
 | D3 : anomalies en 10 min (nombre, durée max) / écart max entre trames | |

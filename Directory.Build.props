@@ -1,0 +1,15 @@
+<Project>
+
+  <!--
+    Réglages communs à tous les projets du dépôt (MSBuild lit ce fichier tout seul, avant chaque .csproj).
+    LA version d'ACAW est ici, et nulle part ailleurs : acaw.exe, acaw-tray.exe, l'installateur et la
+    GitHub Release la reprennent. Pour publier une version : docs/guide/09-publier-une-version.md.
+  -->
+  <PropertyGroup>
+    <Version>0.4.0</Version>
+    <Product>ACAW (Auto Connect AirPods Windows)</Product>
+    <Company>Romsy</Company>
+    <Copyright>Romsy</Copyright>
+  </PropertyGroup>
+
+</Project>

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Acaw.Core;
 using Acaw.Core.Config;
 using Acaw.Core.Hosting;
 using Acaw.Core.Switching;
@@ -41,8 +42,11 @@ internal sealed class TrayApp : ApplicationContext
     private readonly Timer _lockedRetry = new() { Interval = LockedRetryMs };
     private readonly ConfigCoordinator _coordinator;
     private readonly ConfigWatcher? _watcher;
+    private readonly EventWaitHandle _quit;
+    private readonly RegisteredWaitHandle _quitWait;
     private AcawHost? _subscribedHost; // l'hôte dont on écoute les changements d'état
     private int _lockedRetries;         // essais successifs sur un fichier verrouillé
+    private readonly HashSet<string> _handsFreeChecked = new(StringComparer.OrdinalIgnoreCase); // paires déjà vérifiées
 
     public TrayApp()
     {
@@ -66,6 +70,11 @@ internal sealed class TrayApp : ApplicationContext
             FileLog.Write($"Surveillance de config.json impossible : {e.Message}");
         }
 
+        // « acaw quit » (l'installateur) demande un arrêt propre : comme le menu « Quitter ».
+        _quit = new QuitSignal().Listen();
+        _quitWait = ThreadPool.RegisterWaitForSingleObject(_quit, (_, _) => _ui.BeginInvoke(ExitThread),
+                                                           null, Timeout.Infinite, executeOnlyOnce: true);
+
         _retry.Tick += (_, _) => { if (_coordinator.Host is null) RefreshConfig(); };
         _lockedRetry.Tick += (_, _) => { _lockedRetry.Stop(); RefreshConfig(); };
         _retry.Start();
@@ -79,6 +88,8 @@ internal sealed class TrayApp : ApplicationContext
         if (disposing)
         {
             SystemEvents.PowerModeChanged -= OnPowerModeChanged; // événement statique : à retirer sinon fuite
+            _quitWait.Unregister(null);
+            _quit.Dispose();
             _watcher?.Dispose(); // d'abord : plus aucune relecture ne doit arriver pendant l'arrêt
             _retry.Dispose();
             _lockedRetry.Dispose();
@@ -113,6 +124,7 @@ internal sealed class TrayApp : ApplicationContext
             _startup,
             new ToolStripMenuItem("Ouvrir le journal", null, (_, _) => OpenLog()),
             new ToolStripSeparator(),
+            new ToolStripMenuItem($"ACAW {AppInfo.Version}") { Enabled = false },
             new ToolStripMenuItem("Quitter", null, (_, _) => ExitThread()),
         ]);
         _menu.Opening += (_, _) =>
@@ -164,9 +176,35 @@ internal sealed class TrayApp : ApplicationContext
             if (_subscribedHost is not null) _subscribedHost.StateChanged -= OnHostStateChanged;
             if (host is not null) host.StateChanged += OnHostStateChanged;
             _subscribedHost = host;
-            if (host is not null) FileLog.Write($"ACAW démarré pour {_coordinator.Config!.Name}");
+            if (host is not null)
+            {
+                FileLog.Write($"ACAW démarré pour {_coordinator.Config!.Name}");
+                WarnIfHandsFree(_coordinator.Config.Mac!);
+            }
         }
         Render();
+    }
+
+    // Profil mains libres actif = bascules de 10 s au lieu de 2 (ADR-0001). Une bulle par session et par paire.
+    private void WarnIfHandsFree(string mac)
+    {
+        if (!_handsFreeChecked.Add(mac)) return;
+        bool active;
+        try
+        {
+            active = HandsFreeProfile.IsEnabled(mac);
+        }
+        catch (Exception e)
+        {
+            FileLog.Write($"Vérification du profil mains libres impossible : {e.Message}");
+            return;
+        }
+        if (!active) return;
+        FileLog.Write("Profil mains libres actif : chaque bascule prendra ~10 s au lieu de ~2 s");
+        _icon.ShowBalloonTip(15_000, "ACAW : bascules lentes",
+            "Le profil « mains libres » des AirPods est actif : chaque bascule prend ~10 s au lieu de 2. " +
+            "Pour le retirer : control printers → AirPods → Propriétés → Services → décocher « Mains libres téléphonie ».",
+            ToolTipIcon.Warning);
     }
 
     // Levé sur le thread de l'hôte. On ne transmet pas l'état reçu : Render relit celui de l'hôte ACTUEL, pour

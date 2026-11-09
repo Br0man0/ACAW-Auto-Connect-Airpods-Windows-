@@ -15,21 +15,17 @@ Aucun driver, aucun droit administrateur, aucun accès réseau.
 
 ## Démarrage rapide
 
-Prérequis : Windows 10/11, Bluetooth activé, AirPods appairés au PC, [SDK .NET 10](https://dotnet.microsoft.com/download).
+Prérequis : Windows 10/11 (64 bits), Bluetooth activé, AirPods appairés au PC.
 
 1. Retirer le profil « Mains libres » des AirPods (sinon une bascule prend 10 s au lieu de 2) : voir le
-   [guide d'utilisation](docs/guide/06-utiliser-acaw.md#une-seule-fois--installer).
-2. Construire les deux programmes :
-   ```bash
-   dotnet publish src/Acaw.Tray -c Release -o "%LOCALAPPDATA%\Programs\ACAW"
-   ```
-   ```bash
-   dotnet publish src/Acaw.Cli -c Release -o "%LOCALAPPDATA%\Programs\ACAW"
-   ```
-3. Lancer `acaw-tray.exe` depuis ce dossier, puis cocher « Démarrer avec Windows » dans le menu de l'icône.
-   S'il n'y a qu'une paire d'AirPods appairée, ACAW la choisit tout seul ; sinon, menu de l'icône → AirPods.
+   [guide d'utilisation](docs/guide/06-utiliser-acaw.md#une-seule-fois--installer). ACAW le rappelle s'il l'oublie.
+2. Télécharger `acaw-setup-X.Y.Z.exe` dans les **Releases** du dépôt et l'exécuter : aucun droit
+   administrateur, .NET inclus. (Non signé : « Informations complémentaires → Exécuter quand même ».)
+3. C'est tout : ACAW se lance, démarre avec Windows, et choisit tout seul les AirPods s'il n'y en a
+   qu'une paire ; sinon, menu de l'icône → AirPods.
 
-Lancer les tests (159 tests, quelques secondes) :
+Pour développer, il faut le [SDK .NET 10](https://dotnet.microsoft.com/download). Lancer les tests (173 tests,
+quelques secondes) :
 
 ```bash
 dotnet test
@@ -47,7 +43,8 @@ dotnet test
 6. [Utiliser ACAW](docs/guide/06-utiliser-acaw.md) : installation, menu, commandes, dépannage
 7. [L'application résidente](docs/guide/07-application-residente.md) : file d'événements, ports, WinForms
 8. [Stratégie de test](docs/guide/08-strategie-de-test.md) : pyramide, invariants, recette manuelle
-9. [Glossaire](docs/glossaire.md) : Bluetooth, audio Windows, .NET
+9. [Publier une version](docs/guide/09-publier-une-version.md) : numéro de version, installateur, GitHub Release
+10. [Glossaire](docs/glossaire.md) : Bluetooth, audio Windows, .NET
 
 Référence : [annonces BLE des AirPods, ce qu'on sait](docs/protocole-ble-airpods.md)
 
@@ -56,6 +53,8 @@ Décisions d'architecture :
 - [ADR-0001 : mécanisme de bascule](docs/adr/0001-mecanisme-bascule.md)
 - [ADR-0002 : modèle de processus](docs/adr/0002-modele-processus.md)
 - [ADR-0003 : règles de bascule entre le PC et l'iPhone](docs/adr/0003-regles-de-bascule.md)
+- [ADR-0004 : pause au retrait d'un écouteur (reportée)](docs/adr/0004-pause-au-retrait.md)
+- [ADR-0005 : distribution (installateur et versions)](docs/adr/0005-distribution.md)
 
 ## Feuille de route
 
@@ -64,5 +63,7 @@ Décisions d'architecture :
 | 0 | Faisabilité : reconnexion chronométrée, retour iPhone, annonces BLE | ✅ ([résultats](docs/adr/0001-mecanisme-bascule.md#constats-de-la-phase-0)) |
 | 1 | Cœur (machine à états, décodage BLE, configuration) + `acaw setup / status / switch / release` | ✅ |
 | 2 | Bascule automatique, application barre des tâches sans console, démarrage avec Windows | ✅ code et tests · recette manuelle en cours |
+| — | Configuration à chaud (choix automatique des AirPods, sous-menu AirPods) | ✅ code et tests · recette en cours |
+| — | Installation propre : installateur sans droits admin, GitHub Release automatique (v0.4.0) | ✅ code et tests · recette en cours |
 | 3 | Optimisation de la vitesse, mesurée | ⏳ |
-| 4 | Pause au retrait d'un écouteur | ⏳ |
+| 4 | Pause au retrait d'un écouteur | ⏸️ reportée : impossible sans driver signé ([ADR-0004](docs/adr/0004-pause-au-retrait.md)) |

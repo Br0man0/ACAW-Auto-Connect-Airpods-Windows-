@@ -6,11 +6,12 @@
 ## La pyramide
 
 ```
-             /  Recette manuelle  \        quelques scénarios, avec les vrais AirPods et l'iPhone
-            /    Tests Windows      \      9 tests fumée (vraies API, sans rien modifier) + 18 tests (démarrage, chemins de driver, config.json)
-           /  Tests d'intégration    \     22 tests de l'hôte + 18 du coordinateur de configuration, avec de faux Windows
-          /  Invariants (aléatoire)   \    des milliers de séquences générées
-         /     Tests unitaires         \   machine, tracker, décodeur, configuration
+              /  Recette manuelle  \         quelques scénarios, avec les vrais AirPods et l'iPhone
+             / Test d'installation  \        installation et désinstallation silencieuses (sur GitHub)
+            /    Tests Windows       \       10 tests fumée (vraies API, sans rien modifier) + 25 sans matériel
+           /  Tests d'intégration     \      22 tests de l'hôte + 18 du coordinateur de configuration, avec de faux Windows
+          /  Invariants (aléatoire)    \     des milliers de séquences générées
+         /     Tests unitaires          \    machine, tracker, décodeur, configuration, version
 ```
 
 Plus on monte, plus un test est réaliste, mais lent et difficile à automatiser. On en met donc beaucoup
@@ -47,7 +48,11 @@ neuve, le fichier [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) :
 | compiler en Release avec `-warnaserror` | une erreur, **ou le moindre avertissement** |
 | lancer les tests (sans les tests fumée) | un seul test échoue |
 | vérifier la couverture (`build/check-coverage.ps1`) | `Acaw.Core` passe sous 90 % des lignes couvertes |
-| publier `acaw-tray.exe` et `acaw.exe` | l'application ne se construit pas |
+| construire l'installateur (`build/build-release.ps1`) | la publication autonome, l'installateur ou l'archive ne se construit pas, ou `acaw.exe --version` n'annonce pas la version de `Directory.Build.props` |
+| tester l'installateur (`build/test-installer.ps1`) | installation ou désinstallation silencieuse incomplète : fichiers, version, raccourci du menu Démarrer ou du démarrage |
+
+Un second workflow, **Release** (`release.yml`), refait tout cela quand un tag `vX.Y.Z` est poussé, puis
+publie la GitHub Release ([guide 9](09-publier-une-version.md)).
 
 Les **tests fumée** ne tournent pas sur GitHub : la machine n'a ni Bluetooth ni carte son, ils y
 échoueraient pour de mauvaises raisons. Lance-les sur ton PC avant chaque version (`dotnet test`).
@@ -61,7 +66,7 @@ Les **tests fumée** ne tournent pas sur GitHub : la machine n'a ni Bluetooth ni
 1. Onglet Actions → cliquer sur le contrôle rouge → ouvrir l'étape en ✗ : le message dit quel test ou
    quel avertissement pose problème.
 2. En bas de la page, **Artifacts** : `resultats-tests` (détail des tests et couverture) et `acaw-windows`
-   (les exécutables construits, utiles pour essayer une version sans compiler).
+   (l'installateur et l'archive portable construits, utiles pour essayer une version sans compiler).
 3. Reproduire en local, puis corriger :
    ```bash
    dotnet build -c Release -warnaserror
@@ -218,7 +223,7 @@ quand on casse le code ? ».
 | 10b | AirPods sortis mais posés loin (autre pièce), lancer une vidéo | au pire 6 s de silence, puis le son revient sur les haut-parleurs | |
 | 11 | mettre le PC en veille 1 min, réveiller, lancer une vidéo | la bascule marche encore | à faire |
 | 12 | couper puis rallumer le Bluetooth du PC | « Écoute BLE arrêtée » dans le journal, puis la bascule remarche | |
-| 13 | cocher « Démarrer avec Windows », fermer la session, la rouvrir | ACAW démarre tout seul, sans console. Le journal montre « Lancement de … (Windows démarré il y a …) » **puis « ACAW démarré »** : la première ligne seule ne suffit pas | |
+| 13 | cocher « Démarrer avec Windows », fermer la session, la rouvrir | ACAW démarre tout seul, sans console. Le journal montre « Lancement d'ACAW … (Windows démarré il y a …) » **puis « ACAW démarré »** : la première ligne seule ne suffit pas | |
 | 13b | le désactiver dans Paramètres → Applications → Démarrage, puis ouvrir le menu de l'icône | la case « Démarrer avec Windows » est décochée | |
 | 14 | lancer `acaw-tray.exe` une seconde fois | rien (une seule icône) | |
 
@@ -236,3 +241,17 @@ Mêmes conditions (ACAW lancé depuis un terminal ordinaire). Garder le journal 
 | C6 | pendant une vidéo (AirPods sur le PC), modifier un délai | les AirPods restent sur le PC, le son ne reste jamais coupé | |
 | C7 | couper le Bluetooth du PC, quitter puis relancer ACAW, rallumer le Bluetooth | « Recherche des AirPods… » ou erreur, puis ACAW démarre tout seul en 30 s au plus | |
 | C8 | (si tu as d'autres AirPods ou des Beats) les appairer, puis les choisir dans le menu | ils sont pilotés tout de suite ; vérifier que `acaw status` les voit « éveillés » (hypothèse « modèle BLE = pid » à confirmer pour ce modèle) | |
+
+### Recette de l'installation
+
+Avec la Release téléchargée sur GitHub, depuis l'Explorateur (jamais depuis Claude).
+
+| # | Geste | Attendu | ✓ |
+|---|---|---|---|
+| I1 | double-cliquer `acaw-setup-X.Y.Z.exe` | avertissement SmartScreen possible (« Exécuter quand même ») ; **aucune demande de droits administrateur** ; case « Démarrer avec Windows » cochée | |
+| I2 | finir l'installation | ACAW se lance ; menu de l'icône : la bonne version en bas, « Démarrer avec Windows » coché ; raccourci ACAW dans le menu Démarrer ; ACAW dans Paramètres → Applications | |
+| I3 | pendant une vidéo (AirPods sur le PC), relancer l'installateur par-dessus | ACAW s'arrête, le son ne reste **jamais** coupé, ACAW revient à la fin, les réglages sont gardés | |
+| I4 | fermer la session, la rouvrir | ACAW démarre seul (journal : « Lancement d'ACAW X.Y.Z » puis « ACAW démarré ») | |
+| I5 | Paramètres → Applications → ACAW → Désinstaller, répondre **Non** à la question des réglages | ACAW arrêté, fichiers, raccourci du menu Démarrer et démarrage avec Windows retirés ; `%APPDATA%\ACAW\config.json` toujours là | |
+| I6 | réinstaller, puis désinstaller en répondant **Oui** | plus rien d'ACAW dans `%APPDATA%` ni dans `%LOCALAPPDATA%` | |
+| I7 | (profil mains libres réactivé pour l'essai) lancer ACAW | bulle « bascules lentes » une seule fois ; `acaw status` affiche « Profil mains libres : ACTIF » | |

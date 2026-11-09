@@ -20,6 +20,9 @@ const string Usage = """
       status           état des AirPods : connexion à ce PC, éveil, écouteurs portés, batteries
       switch           amener les AirPods sur ce PC
       release          rendre les AirPods (l'iPhone les reprend en quelques secondes)
+      startup on|off   démarrer ou non acaw-tray avec Windows (sans argument : l'état actuel)
+      quit             arrêter acaw-tray proprement (le son coupé par ACAW est rétabli)
+      --version        la version d'ACAW
     """;
 const string BluetoothOff = "Bluetooth du PC coupé (ou casque absent pour Windows).";
 
@@ -29,6 +32,22 @@ var config = new AcawConfig();
 
 try
 {
+    // Ces deux commandes ne lisent pas la configuration : elles marchent même si config.json est abîmé
+    // (l'installateur s'en sert).
+    if (command is "--version" or "version")
+    {
+        Console.WriteLine($"ACAW {Acaw.Core.AppInfo.Version}");
+        return 0;
+    }
+    if (command == "startup") return Startup(args.ElementAtOrDefault(1));
+    if (command == "quit")
+    {
+        // Arrêt propre de acaw-tray (son rétabli) ; l'installateur le fait avant de remplacer les fichiers.
+        bool stopped = new Acaw.Windows.QuitSignal().Request(TimeSpan.FromSeconds(10));
+        Console.WriteLine(stopped ? "ACAW est arrêté." : "ACAW ne s'est pas arrêté en 10 s.");
+        return stopped ? 0 : 2;
+    }
+
     config = LoadConfig();
     return command switch
     {
@@ -66,6 +85,38 @@ catch (COMException e)
     return 3;
 }
 
+// Démarrage avec Windows de acaw-tray.exe, installé à côté de acaw.exe. Même code que la case du menu de
+// l'icône (StartupShortcut) : l'installateur l'appelle avec « on » ou « off ».
+int Startup(string? action)
+{
+    string tray = Path.Combine(AppContext.BaseDirectory, "acaw-tray.exe");
+    var shortcut = Acaw.Windows.StartupShortcut.ForCurrentUser(tray);
+    try
+    {
+        switch (action)
+        {
+            case "on":
+                if (!File.Exists(tray)) throw new UserError($"acaw-tray.exe introuvable à côté de acaw.exe ({tray}).");
+                shortcut.Set(true);
+                Console.WriteLine($"Démarrage avec Windows activé ({shortcut.ShortcutPath}).");
+                return 0;
+            case "off":
+                shortcut.Set(false);
+                Console.WriteLine("Démarrage avec Windows désactivé.");
+                return 0;
+            case null or "status":
+                Console.WriteLine(shortcut.IsEnabled ? "Démarrage avec Windows : activé" : "Démarrage avec Windows : désactivé");
+                return 0;
+            default:
+                return Fail(Usage);
+        }
+    }
+    catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+    {
+        throw new UserError($"Réglage du démarrage impossible : {e.Message}");
+    }
+}
+
 int Setup(string? choice)
 {
     var headsets = BluetoothAudio.ListEndpoints().Where(ep => ep.IsA2dp && ep.Mac is not null).ToList();
@@ -94,6 +145,9 @@ int Status()
     var ep = RequireEndpoint();
     Console.WriteLine($"AirPods : {ep.Name} (modèle {config.ModelId})");
     Console.WriteLine($"Sur ce PC : {Describe(BluetoothAudio.GetState(ep.Id))}");
+    Console.WriteLine(HandsFreeProfile.IsEnabled(config.Mac!)
+        ? "Profil mains libres : ACTIF → bascules lentes (10 s). Le retirer : docs/guide/06-utiliser-acaw.md"
+        : "Profil mains libres : retiré (bien)");
 
     if (config.ModelNumber is not { } model) return 0;
     Console.Write("Écoute BLE pendant 5 s… ");

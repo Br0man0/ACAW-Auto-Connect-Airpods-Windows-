@@ -18,26 +18,32 @@ ACAW se compose de deux programmes :
    ```
    Clic droit sur les AirPods → Propriétés → onglet Services → décocher « Mains libres téléphonie ».
    Contrepartie : pas de micro AirPods sur le PC.
-3. **Construire les deux programmes** dans un dossier qui ne bougera plus, depuis le dossier du dépôt :
-   ```bash
-   dotnet publish src/Acaw.Tray -c Release -o "%LOCALAPPDATA%\Programs\ACAW"
-   ```
-   ```bash
-   dotnet publish src/Acaw.Cli -c Release -o "%LOCALAPPDATA%\Programs\ACAW"
-   ```
-4. **Lancer** `acaw-tray.exe` (double-clic dans `%LOCALAPPDATA%\Programs\ACAW`), puis, dans le menu de
-   l'icône, cocher **« Démarrer avec Windows »**.
-5. **Les AirPods sont choisis tout seuls** s'il n'y a qu'une paire d'AirPods appairée au PC : une bulle
+   Si tu l'oublies, ACAW te le rappelle par une bulle, et `acaw status` l'indique.
+3. **Installer ACAW** : télécharger `acaw-setup-X.Y.Z.exe` dans les **Releases** du dépôt GitHub, puis
+   double-cliquer. Aucun droit administrateur n'est demandé, et rien d'autre n'est à installer (.NET est
+   inclus).
+   - Windows affiche peut-être « Windows a protégé votre ordinateur » (l'installateur n'est pas signé) :
+     **Informations complémentaires → Exécuter quand même**. Pour vérifier le fichier avant : guide 9,
+     « Vérifier une empreinte ».
+   - Laisser cochée la case **« Démarrer avec Windows »**.
+   - ACAW se lance à la fin. Il s'installe dans `%LOCALAPPDATA%\Programs\ACAW`, avec un raccourci **ACAW**
+     dans le menu Démarrer.
+4. **Les AirPods sont choisis tout seuls** s'il n'y a qu'une paire d'AirPods appairée au PC : une bulle
    le confirme. S'il y en a plusieurs, une bulle invite à choisir dans le menu de l'icône → **AirPods**.
    Le choix est enregistré dans `%APPDATA%\ACAW\config.json` (adresse, modèle et nom des AirPods).
 
-> Lance `acaw-tray.exe` depuis l'Explorateur ou un terminal Windows ordinaire, **pas depuis un outil
-> empaqueté** comme l'application Claude : ses écritures dans `%APPDATA%` seraient redirigées ailleurs
-> (voir le [guide 7](07-application-residente.md#démarrer-avec-windows)).
+**Mettre à jour** : installer la nouvelle version par-dessus. L'installateur arrête ACAW proprement, garde
+les réglages, et le relance. **Désinstaller** : Paramètres → Applications → ACAW ; on te demande s'il faut
+aussi effacer les réglages et le journal.
 
-> Le dossier compte : « Démarrer avec Windows » retient le chemin de `acaw-tray.exe`. Lance-le toujours
-> depuis `%LOCALAPPDATA%\Programs\ACAW`, pas depuis le dossier de compilation (`bin\…`), qu'une nouvelle
-> compilation peut effacer ou verrouiller. Si tu le déplaces, la case apparaît décochée : recoche-la.
+> Lance l'installateur et ACAW depuis l'Explorateur ou le menu Démarrer, **pas depuis un outil empaqueté**
+> comme l'application Claude : ses écritures dans `%APPDATA%` seraient redirigées ailleurs (voir le
+> [guide 7](07-application-residente.md#démarrer-avec-windows)).
+
+> **Version de développement** (sans installateur), depuis le dossier du dépôt : `dotnet publish` des deux
+> projets vers `%LOCALAPPDATA%\Programs\ACAW`, comme le fait `build/build-release.ps1` (guide 9). Ne
+> jamais lancer ACAW depuis le dossier de compilation (`bin\…`) : une compilation ne pourrait plus
+> remplacer ses fichiers, et le démarrage avec Windows viserait cette copie.
 
 ## Au quotidien
 
@@ -84,11 +90,15 @@ La couleur de l'icône : 🟢 sur ce PC · 🟠 en cours · gris-bleu ailleurs �
 | `status` | connectés à ce PC ? éveillés ? combien d'écouteurs portés ? batteries |
 | `switch` | amener les AirPods sur ce PC, avec le temps mis |
 | `release` | rendre les AirPods : l'iPhone les reprend en 2 à 3 s |
+| `startup on` / `off` | démarrer ou non ACAW avec Windows (sans argument : l'état actuel). Même effet que la case du menu |
+| `quit` | arrêter ACAW proprement (le son coupé par ACAW est rétabli) ; l'installateur s'en sert |
+| `--version` | la version d'ACAW |
 
 ```
 > acaw status
 AirPods : Casque (AirPods Pro) (modèle 2027)
 Sur ce PC : non (ailleurs ou libres)
+Profil mains libres : retiré (bien)
 Écoute BLE pendant 5 s…
 Éveillés : oui · écouteurs portés : 2 · dans le boîtier : 0
 Batteries : écouteurs 80 % / 80 % · boîtier —
@@ -129,7 +139,7 @@ fichier tout seul** une demi-seconde après l'enregistrement, sans qu'il faille 
 | les AirPods ne viennent pas | boîtier fermé ou hors de portée ? `acaw status` dit s'ils sont éveillés ; sinon voir le journal |
 | ils viennent pour une simple notification | augmenter `SoundConfirmDelay` dans `config.json` |
 | ils repartent trop vite après une pause | augmenter `PauseDelay` |
-| ACAW ne démarre pas avec Windows | ouvrir le menu de l'icône : si « Démarrer avec Windows » est décoché, le cocher. Vérifier que `ACAW.lnk` est dans le dossier Démarrage (Win + R, `shell:startup`) et qu'ACAW est « Activé » dans Paramètres → Applications → Démarrage. Le journal commence chaque lancement par une ligne « Lancement de … (Windows démarré il y a …) » ; si le journal lui-même est en panne, la raison est dans `%TEMP%\acaw-journal-en-panne.log` |
+| ACAW ne démarre pas avec Windows | ouvrir le menu de l'icône : si « Démarrer avec Windows » est décoché, le cocher. Vérifier que `ACAW.lnk` est dans le dossier Démarrage (Win + R, `shell:startup`) et qu'ACAW est « Activé » dans Paramètres → Applications → Démarrage. Le journal commence chaque lancement par une ligne « Lancement d'ACAW X.Y.Z : … (Windows démarré il y a …) » ; si le journal lui-même est en panne, la raison est dans `%TEMP%\acaw-journal-en-panne.log` |
 | le PC est resté muet (ne devrait jamais arriver) | relancer `acaw-tray.exe` : il rétablit au démarrage le son qu'il avait coupé ; sinon rétablir le son à la main et envoyer le journal |
 | `Windows refuse l'accès au driver… (E_NOINTERFACE)` | supprimer les AirPods des paramètres Bluetooth, les ré-appairer, puis les choisir dans le menu |
 | `Éveillés : non détectés` alors qu'ils sont portés | relancer `status` ; vérifier que le modèle dans `config.json` correspond à celui affiché par `setup` |
