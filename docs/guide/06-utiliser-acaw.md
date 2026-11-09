@@ -34,8 +34,9 @@ ACAW se compose de deux programmes :
 5. **Lancer** `acaw-tray.exe` (double-clic dans `%LOCALAPPDATA%\Programs\ACAW`), puis, dans le menu de
    l'icône, cocher **« Démarrer avec Windows »**.
 
-> Le dossier compte : « Démarrer avec Windows » retient le chemin de `acaw-tray.exe`. Si tu le déplaces,
-> décoche puis recoche l'option.
+> Le dossier compte : « Démarrer avec Windows » retient le chemin de `acaw-tray.exe`. Lance-le toujours
+> depuis `%LOCALAPPDATA%\Programs\ACAW`, pas depuis le dossier de compilation (`bin\…`), qu'une nouvelle
+> compilation peut effacer ou verrouiller. Si tu le déplaces, la case apparaît décochée : recoche-la.
 
 ## Au quotidien
 
@@ -116,6 +117,7 @@ jamais couper les haut-parleurs). On peut les modifier à la main (format `"00:0
 | les AirPods ne viennent pas | boîtier fermé ou hors de portée ? `acaw status` dit s'ils sont éveillés ; sinon voir le journal |
 | ils viennent pour une simple notification | augmenter `SoundConfirmDelay` dans `config.json` |
 | ils repartent trop vite après une pause | augmenter `PauseDelay` |
+| ACAW ne démarre pas avec Windows | ouvrir le menu de l'icône : si « Démarrer avec Windows » est décoché, le cocher. Vérifier aussi qu'ACAW est « Activé » dans Paramètres → Applications → Démarrage |
 | le PC est resté muet (ne devrait jamais arriver) | relancer `acaw-tray.exe` : il rétablit au démarrage le son qu'il avait coupé ; sinon rétablir le son à la main et envoyer le journal |
 | `Windows refuse l'accès au driver… (E_NOINTERFACE)` | supprimer les AirPods des paramètres Bluetooth, les ré-appairer, relancer `acaw setup` |
 | `Éveillés : non détectés` alors qu'ils sont portés | relancer `status` ; vérifier que le modèle dans `config.json` correspond à celui affiché par `setup` |

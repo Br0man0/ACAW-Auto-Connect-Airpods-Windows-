@@ -77,7 +77,7 @@ le résultat. On les lance tous d'un coup :
 dotnet test
 ```
 
-Résultat attendu : `Réussi! - échec: 0, réussite: 93` pour le cœur (et 9 de plus pour les tests fumée Windows). Si un test échoue, la sortie dit lequel, ce qui
+Résultat attendu : `Réussi! - échec: 0, réussite: 93` pour le cœur (et 17 de plus pour les tests Windows : 9 tests fumée et 8 tests du registre). Si un test échoue, la sortie dit lequel, ce qui
 était attendu et ce qui a été obtenu.
 
 Le projet utilise **xUnit** :

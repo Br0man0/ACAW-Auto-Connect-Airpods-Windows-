@@ -30,7 +30,7 @@ AutoConnectAirpodWin (ACAW)/
 │  └─ Acaw.Cli/                   acaw.exe : setup, status, switch, release
 ├─ tests/
 │  ├─ Acaw.Core.Tests/            unitaires, invariants, intégration de l'hôte (faux ports)
-│  └─ Acaw.Windows.Tests/         tests fumée sur les vraies API Windows (lecture seule)
+│  └─ Acaw.Windows.Tests/         tests fumée sur les vraies API Windows (lecture seule), tests du registre
 └─ spikes/
    └─ Phase0/                     outil de mesure de la phase 0, figé
 ```

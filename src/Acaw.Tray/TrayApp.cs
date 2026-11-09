@@ -24,6 +24,7 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ToolStripMenuItem _auto = new("Bascule automatique") { CheckOnClick = true };
     private readonly ToolStripMenuItem _startup = new("Démarrer avec Windows") { CheckOnClick = true };
     private readonly Control _ui = new(); // sert à revenir sur le thread de l'interface depuis l'hôte
+    private readonly StartupEntry _startupEntry = new(Application.ExecutablePath);
     private readonly Adapters? _adapters;
 
     public TrayApp()
@@ -92,7 +93,7 @@ internal sealed class TrayApp : ApplicationContext
             new ToolStripSeparator(),
             new ToolStripMenuItem("Quitter", null, (_, _) => ExitThread()),
         ]);
-        _menu.Opening += (_, _) => _startup.Checked = Startup.IsEnabled;
+        _menu.Opening += (_, _) => _startup.Checked = _startupEntry.IsEnabled;
 
         _icon.ContextMenuStrip = _menu;
         _icon.Icon = TrayIcons.For(SwitchState.Away, autoSwitch: false);
@@ -159,11 +160,11 @@ internal sealed class TrayApp : ApplicationContext
     {
         try
         {
-            Startup.Set(enabled);
+            _startupEntry.Set(enabled);
         }
         catch (Exception e) when (e is UnauthorizedAccessException or System.Security.SecurityException or IOException)
         {
-            _startup.Checked = Startup.IsEnabled;
+            _startup.Checked = _startupEntry.IsEnabled;
             _icon.ShowBalloonTip(5_000, "ACAW", $"Réglage impossible : {e.Message}", ToolTipIcon.Warning);
         }
     }

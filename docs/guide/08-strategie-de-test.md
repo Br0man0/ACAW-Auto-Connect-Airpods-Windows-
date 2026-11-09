@@ -7,7 +7,7 @@
 
 ```
              /  Recette manuelle  \        quelques scénarios, avec les vrais AirPods et l'iPhone
-            /    Tests fumée        \      9 tests, vraies API Windows, sans rien modifier
+            /    Tests Windows      \      9 tests fumée (vraies API, sans rien modifier) + 8 tests du registre
            /  Tests d'intégration    \     21 tests, l'hôte entier avec de faux Windows
           /  Invariants (aléatoire)   \    des milliers de séquences générées
          /     Tests unitaires         \   machine, tracker, décodeur, configuration
@@ -173,7 +173,7 @@ quand on casse le code ? ».
 |---|---|---|
 | connexion radio réelle | il faut de vrais AirPods et un iPhone | recette |
 | interface (icône, menu) | WinForms se teste mal automatiquement | recette |
-| démarrage avec Windows | écrit dans le registre de l'utilisateur | recette, avec son accord |
+| lancement réel à l'ouverture de session | il faut fermer puis rouvrir la session | recette (ligne 13). Les valeurs écrites dans le registre, elles, sont testées automatiquement dans une clé temporaire (`StartupEntryTests`), sans toucher au vrai démarrage |
 
 ## Recette manuelle
 
@@ -195,5 +195,6 @@ quand on casse le code ? ».
 | 10b | AirPods sortis mais posés loin (autre pièce), lancer une vidéo | au pire 6 s de silence, puis le son revient sur les haut-parleurs | |
 | 11 | mettre le PC en veille 1 min, réveiller, lancer une vidéo | la bascule marche encore | à faire |
 | 12 | couper puis rallumer le Bluetooth du PC | « Écoute BLE arrêtée » dans le journal, puis la bascule remarche | |
-| 13 | cocher « Démarrer avec Windows », fermer la session, la rouvrir | ACAW démarre tout seul, sans console | |
+| 13 | cocher « Démarrer avec Windows », fermer la session, la rouvrir | ACAW démarre tout seul, sans console ; il est « Activé » dans Paramètres → Applications → Démarrage | |
+| 13b | le désactiver dans Paramètres → Applications → Démarrage, puis ouvrir le menu de l'icône | la case « Démarrer avec Windows » est décochée | |
 | 14 | lancer `acaw-tray.exe` une seconde fois | rien (une seule icône) | |

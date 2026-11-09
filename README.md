@@ -32,7 +32,7 @@ Prérequis : Windows 10/11, Bluetooth activé, AirPods appairés au PC, [SDK .NE
    ```
 4. Lancer `acaw-tray.exe` depuis ce dossier, puis cocher « Démarrer avec Windows » dans le menu de l'icône.
 
-Lancer les tests (102 tests, quelques secondes) :
+Lancer les tests (110 tests, quelques secondes) :
 
 ```bash
 dotnet test

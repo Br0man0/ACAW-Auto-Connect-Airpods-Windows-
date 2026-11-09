@@ -122,10 +122,28 @@ vers ce thread.
 
 ## Démarrer avec Windows
 
-Le menu « Démarrer avec Windows » ajoute une valeur `ACAW` dans la clé du registre
-`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. Windows lance tout ce qui s'y trouve à l'ouverture
-de session. `HKCU` est la partie du registre propre à l'utilisateur : aucun droit administrateur n'est
-nécessaire. Décocher l'option supprime la valeur.
+Le menu « Démarrer avec Windows » écrit **deux** valeurs `ACAW` dans `HKCU`, la partie du registre
+propre à l'utilisateur (aucun droit administrateur n'est nécessaire) :
+
+| Clé | Contenu | Rôle |
+|---|---|---|
+| `Software\Microsoft\Windows\CurrentVersion\Run` | le chemin de `acaw-tray.exe` | **quoi** lancer à l'ouverture de session |
+| `Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run` | 12 octets, le premier vaut `02` (activé) ou `03` (désactivé) | **si** Windows a le droit de le lancer : c'est l'interrupteur de la page Paramètres → Applications → Démarrage |
+
+> **Pourquoi deux ?** Au début, ACAW n'écrivait que la première. Le 4 novembre 2026, on a constaté dans le
+> journal de Windows (`Microsoft-Windows-Shell-Core/Operational`, événements 9705 à 9708) que la commande
+> n'était **jamais lancée**, cinq démarrages de suite : Windows ne lançait que les programmes marqués
+> `02` dans la seconde clé, et ACAW n'y figurait pas. La case du menu, elle, restait cochée.
+
+Le code est dans `src/Acaw.Windows/StartupEntry.cs` :
+- la case n'est cochée que si **les deux** valeurs disent oui, et si le chemin est bien celui du programme
+  lancé (sinon, après un déplacement, Windows lancerait l'ancien) ;
+- cocher la case réécrit les deux valeurs : c'est une demande explicite, qui prime sur une ancienne
+  désactivation dans les Paramètres ;
+- décocher la case supprime les deux valeurs, et rien d'autre.
+
+Si tu désactives ACAW dans **Paramètres → Applications → Démarrage**, la case du menu se décoche toute
+seule : les deux disent la même chose.
 
 ## Le journal
 
