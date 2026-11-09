@@ -26,13 +26,10 @@ Prérequis : Windows 10/11, Bluetooth activé, AirPods appairés au PC, [SDK .NE
    ```bash
    dotnet publish src/Acaw.Cli -c Release -o "%LOCALAPPDATA%\Programs\ACAW"
    ```
-3. Choisir les AirPods :
-   ```bash
-   "%LOCALAPPDATA%\Programs\ACAW\acaw.exe" setup
-   ```
-4. Lancer `acaw-tray.exe` depuis ce dossier, puis cocher « Démarrer avec Windows » dans le menu de l'icône.
+3. Lancer `acaw-tray.exe` depuis ce dossier, puis cocher « Démarrer avec Windows » dans le menu de l'icône.
+   S'il n'y a qu'une paire d'AirPods appairée, ACAW la choisit tout seul ; sinon, menu de l'icône → AirPods.
 
-Lancer les tests (110 tests, quelques secondes) :
+Lancer les tests (159 tests, quelques secondes) :
 
 ```bash
 dotnet test

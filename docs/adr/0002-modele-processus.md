@@ -101,3 +101,19 @@ du filtre KS. On cible l'endpoint **A2DP**, jamais le mains libres (HFP).
 - **Threads COM.** Les adaptateurs Windows sont créés hors du thread de l'interface (STA) et utilisés
   depuis les threads de l'hôte (MTA). L'interface ne fait que déposer des demandes dans la file.
 - **Démarrage avec Windows** par la clé `HKCU\…\Run`, désactivé par défaut, activable depuis le menu.
+
+## Mise à jour : configuration à chaud (2026-11-09)
+
+- **Une nouvelle configuration recrée l'hôte** au lieu de modifier ses pièces en marche : un seul chemin
+  de démarrage, déjà éprouvé. Seul `AutoSwitch` s'applique directement. La décision est prise par
+  `ConfigCoordinator` (Core, testé avec de faux ports `IConfigSource`, `IHeadsetCatalog`,
+  `IAcawServiceFactory`) ; l'icône ne fait qu'afficher ([guide 7](../guide/07-application-residente.md#la-configuration-à-chaud)).
+- **Ordre du remplacement : créer le nouveau → arrêter l'ancien → démarrer le nouveau.** Si la création
+  échoue, l'ancien continue. `AcawHost.Dispose` attend la fin du traitement en cours (1 s au plus), et
+  l'arrêt des branchements rétablit le son coupé par la règle R7.
+- **Un seul thread** pour le coordinateur (celui de l'interface). Les notifications de `config.json`
+  (`ConfigWatcher`, regroupées sur 0,5 s) et les minuteurs y sont ramenés.
+- **Sélection automatique** seulement sans ambiguïté (une seule paire Apple appairée) ; jamais au hasard.
+- Alternative écartée : modifier en marche l'hôte et chaque adaptateur (adresse du casque, modèle BLE,
+  délais de la machine). Plus fin (pas d'interruption d'une bascule en cours), mais chaque pièce aurait
+  eu son propre chemin de mise à jour à tester.

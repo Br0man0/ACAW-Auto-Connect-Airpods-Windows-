@@ -111,7 +111,8 @@ Trois sécurités pour ne jamais laisser le PC muet :
 
 L'hôte signale chaque changement d'état depuis son propre thread, alors que WinForms exige qu'on ne
 touche à l'interface que depuis le thread de l'interface. `BeginInvoke` sert à « poster » la mise à jour
-vers ce thread.
+vers ce thread. L'icône ne croit pas l'état reçu : elle relit celui de l'hôte **actuel**. Sinon, un
+message en retard d'un hôte remplacé (voir plus bas) afficherait un état faux.
 
 | Couleur | État |
 |---|---|
@@ -119,6 +120,46 @@ vers ce thread.
 | 🟠 orange | connexion ou relâche en cours |
 | gris-bleu | AirPods ailleurs (iPhone) ou libres |
 | gris clair | bascule automatique suspendue |
+
+## La configuration à chaud
+
+Choisir des AirPods dans le menu, ou modifier `config.json`, prend effet **sans relancer ACAW**. Celui qui
+décide est `Acaw.Core/Hosting/ConfigCoordinator.cs` ; l'icône ne fait qu'afficher et transmettre.
+
+```
+ config.json ──► ConfigWatcher (regroupe les écritures, 0,5 s) ──┐
+ menu « AirPods » ──► Choose(paire) ─────────────────────────────┤
+ démarrage, puis toutes les 30 s tant qu'ACAW ne tourne pas ────┤
+                                                                 ▼
+                         ConfigCoordinator (Core, testé avec des faux)
+             lit le fichier → AirPodsPicker (choix automatique) → ConfigChanges.Compare
+               identique ou nom seul → rien
+               AutoSwitch seul       → appliqué à l'hôte en marche
+               autre chose           → créer le nouvel hôte → arrêter l'ancien → démarrer le nouveau
+```
+
+**Recréer plutôt que modifier en marche.** Changer de paire ou de délai recrée l'hôte et ses
+branchements Windows, exactement comme au démarrage. Il n'y a donc qu'un seul chemin de démarrage, déjà
+éprouvé. En échange, une bascule en cours est interrompue. Trois précautions rendent ce remplacement sûr :
+
+| Précaution | Pourquoi |
+|---|---|
+| **créer le nouveau avant d'arrêter l'ancien** | si la création échoue (service audio pas prêt…), l'ancien continue au lieu de laisser ACAW sans moteur |
+| **l'arrêt attend la fin de l'ordre en cours** (`AcawHost.Dispose`, 1 s au plus) | l'ancien hôte ne doit plus rien envoyer à Windows une fois le nouveau démarré |
+| **l'arrêt rend le son** (`SpeakerMute.Unmute`, après l'arrêt de l'hôte) | arrêté pendant l'arrivée des AirPods, l'ancien hôte avait coupé les haut-parleurs |
+
+**Le choix automatique** (`AirPodsPicker`) ne choisit que s'il n'y a **aucune ambiguïté** : une seule paire
+d'appareils Apple appairée (reconnue au fabricant `vid&0001004c` dans le chemin du driver). Avec zéro ou
+plusieurs paires, il ne change rien et dit pourquoi. Une liste vide n'est jamais prise pour « plus
+d'AirPods » : à l'ouverture de session, Windows peut ne rien lister pendant quelques secondes.
+
+**Un fichier abîmé ne fait rien perdre** : les réglages en cours sont gardés, une bulle le signale (une
+seule fois tant que l'erreur ne change pas). Un fichier verrouillé par un éditeur pendant la lecture est
+relu une seconde plus tard, sans bulle.
+
+Tout se passe sur le thread de l'interface : la surveillance du fichier et les minuteurs y sont ramenés.
+Le coordinateur n'a donc pas à gérer plusieurs threads à la fois. Seule la création des objets COM passe
+par `Task.Run` (règle de l'ADR-0002).
 
 ## Démarrer avec Windows
 

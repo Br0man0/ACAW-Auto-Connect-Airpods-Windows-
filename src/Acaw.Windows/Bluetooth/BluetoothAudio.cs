@@ -15,7 +15,8 @@ namespace Acaw.Windows.Bluetooth;
 /// <param name="Mac">Adresse Bluetooth extraite du chemin du driver, ou null si introuvable.</param>
 /// <param name="ModelId">Identifiant produit (« pid ») du chemin du driver ; chez Apple, c'est aussi le modèle annoncé en BLE.</param>
 /// <param name="IsA2dp">true pour le profil musique (A2DP), false pour le mains libres (HFP).</param>
-public sealed record BtEndpoint(string Id, string Name, string? Mac, string? ModelId, bool IsA2dp);
+/// <param name="IsApple">true si le fabricant est Apple : AirPods, Beats… Seuls ceux-là émettent les annonces BLE qu'ACAW comprend.</param>
+public sealed record BtEndpoint(string Id, string Name, string? Mac, string? ModelId, bool IsA2dp, bool IsApple);
 
 /// <summary>
 /// Accès à la pile audio Bluetooth de Windows : liste des endpoints, état, connexion et déconnexion par
@@ -35,6 +36,11 @@ public static partial class BluetoothAudio
     [GeneratedRegex("pid&([0-9A-F]{4})", RegexOptions.IgnoreCase)]
     private static partial Regex ModelInPath();
 
+    // … et le fabricant sous la forme « _vid&0001004c » : 0001 = numéro attribué par le Bluetooth SIG,
+    // 004c = Apple (le même identifiant que dans les annonces BLE). « 000205ac » = Apple par son numéro USB.
+    [GeneratedRegex("vid&(0001004c|000205ac)", RegexOptions.IgnoreCase)]
+    private static partial Regex AppleVendorInPath();
+
     private static readonly IMMDeviceEnumerator Enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
 
     /// <summary>Liste les endpoints de sortie audio qui passent par un driver Bluetooth, connectés ou non.</summary>
@@ -48,21 +54,33 @@ public static partial class BluetoothAudio
         {
             collection.Item(i, out var device);
             string? ksId = TryGetKsFilterId(device);
-            if (ksId is null || !ksId.Contains("bth", StringComparison.OrdinalIgnoreCase))
-                continue; // pas un appareil Bluetooth
+            if (ksId is null || !IsBluetooth(ksId)) continue;
 
             device.GetId(out PWSTR idPtr);
-            var mac = MacInPath().Match(ksId);
-            var model = ModelInPath().Match(ksId);
-            result.Add(new BtEndpoint(
-                Com.TakeString(idPtr),
-                GetFriendlyName(device),
-                mac.Success ? FormatMac(mac.Groups[1].Value) : null,
-                model.Success ? model.Groups[1].Value.ToUpperInvariant() : null,
-                ksId.Contains(A2dpSinkUuid, StringComparison.OrdinalIgnoreCase)));
+            result.Add(FromDriverPath(Com.TakeString(idPtr), GetFriendlyName(device), ksId));
         }
         return result;
     }
+
+    /// <summary>
+    /// Décode le chemin du driver d'un endpoint Bluetooth (voir docs/guide/03-spike-phase0-explique.md) :
+    /// adresse MAC, modèle, profil, fabricant. Séparé de la lecture COM pour être testé sans matériel.
+    /// </summary>
+    public static BtEndpoint FromDriverPath(string id, string name, string ksFilterId)
+    {
+        var mac = MacInPath().Match(ksFilterId);
+        var model = ModelInPath().Match(ksFilterId);
+        return new BtEndpoint(
+            id,
+            name,
+            mac.Success ? FormatMac(mac.Groups[1].Value) : null,
+            model.Success ? model.Groups[1].Value.ToUpperInvariant() : null,
+            ksFilterId.Contains(A2dpSinkUuid, StringComparison.OrdinalIgnoreCase),
+            AppleVendorInPath().IsMatch(ksFilterId));
+    }
+
+    /// <summary>true si le chemin du driver est celui d'un appareil Bluetooth.</summary>
+    public static bool IsBluetooth(string ksFilterId) => ksFilterId.Contains("bth", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>L'endpoint musique (A2DP) de l'appareil qui a cette MAC, ou null s'il n'est plus appairé.</summary>
     public static BtEndpoint? FindA2dp(string mac) =>

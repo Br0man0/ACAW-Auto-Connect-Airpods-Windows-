@@ -7,56 +7,71 @@ using Acaw.Windows.Audio;
 using Acaw.Windows.Ble;
 using Acaw.Windows.Bluetooth;
 using Microsoft.Win32;
+using Timer = System.Windows.Forms.Timer;
 
 namespace Acaw.Tray;
 
 /// <summary>
-/// L'application de la barre des tâches : une icône, un menu, et l'hôte qui fait tout le travail.
-/// Ce fichier ne contient aucune règle de bascule : il affiche l'état et transmet les clics.
+/// L'application de la barre des tâches : une icône et un menu. Ce fichier ne contient aucune règle : la
+/// bascule est décidée par l'hôte, et la configuration (choix des AirPods, relecture de config.json) par le
+/// <see cref="ConfigCoordinator"/>. Ici, on affiche l'état et on transmet les clics.
+/// Tout se passe sur le thread de l'interface ; ce qui arrive d'ailleurs (hôte, fichier) y est ramené.
 /// </summary>
 internal sealed class TrayApp : ApplicationContext
 {
+    // Tant qu'ACAW ne tourne pas (pas d'AirPods trouvés, service Windows pas prêt), il réessaie à ce rythme.
+    private const int RetryIntervalMs = 30_000;
+
+    // Fichier verrouillé par un éditeur pendant la lecture : nouvel essai peu après, mais pas indéfiniment
+    // (un fichier verrouillé en permanence inonderait le journal). La prochaine écriture relancera la relecture.
+    private const int LockedRetryMs = 1_000;
+    private const int MaxLockedRetries = 10;
+
     private readonly NotifyIcon _icon = new() { Visible = true };
     private readonly ContextMenuStrip _menu = new();
     private readonly ToolStripMenuItem _status = new() { Enabled = false };
     private readonly ToolStripMenuItem _take = new("Amener sur ce PC");
     private readonly ToolStripMenuItem _release = new("Rendre à l'iPhone");
+    private readonly ToolStripMenuItem _airPods = new("AirPods");
     private readonly ToolStripMenuItem _auto = new("Bascule automatique") { CheckOnClick = true };
     private readonly ToolStripMenuItem _startup = new("Démarrer avec Windows") { CheckOnClick = true };
-    private readonly Control _ui = new(); // sert à revenir sur le thread de l'interface depuis l'hôte
+    private readonly Control _ui = new(); // sert à revenir sur le thread de l'interface depuis l'hôte ou le fichier
     private readonly StartupShortcut _startupShortcut = StartupShortcut.ForCurrentUser(Application.ExecutablePath);
-    private readonly Adapters? _adapters;
+    private readonly Timer _retry = new() { Interval = RetryIntervalMs };
+    private readonly Timer _lockedRetry = new() { Interval = LockedRetryMs };
+    private readonly ConfigCoordinator _coordinator;
+    private readonly ConfigWatcher? _watcher;
+    private AcawHost? _subscribedHost; // l'hôte dont on écoute les changements d'état
+    private int _lockedRetries;         // essais successifs sur un fichier verrouillé
 
     public TrayApp()
     {
         _ui.CreateControl();
         BuildMenu();
 
-        var config = LoadConfig();
-        if (config is null) return; // message déjà affiché ; le menu permet d'ouvrir le journal ou de quitter
+        _coordinator = new ConfigCoordinator(new FileConfigSource(ConfigStore.DefaultPath), new WindowsHeadsetCatalog(),
+                                             new AdaptersFactory(), FileLog.Write);
+        _coordinator.Changed += OnCoordinatorChanged;
+        _coordinator.Notice += message => _icon.ShowBalloonTip(10_000, "ACAW", message, ToolTipIcon.Info);
+        SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
-        // Les objets COM de Windows doivent être créés hors du thread de l'interface (STA) :
-        // l'hôte les utilisera depuis ses propres threads (MTA). Task.Run s'en charge.
-        FileLog.Write("Configuration lue, branchement aux services de Windows…");
         try
         {
-            _adapters = Task.Run(() => Adapters.CreateAsync(config)).GetAwaiter().GetResult();
+            _watcher = new ConfigWatcher(ConfigStore.DefaultPath);
+            _watcher.Changed += () => _ui.BeginInvoke(RefreshConfig);
         }
-        catch (Exception e)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            // Contrôles média ou audio indisponibles : on le dit au lieu de planter au démarrage.
-            Disable("Démarrage impossible", $"ACAW n'a pas pu démarrer : {e.Message}");
-            FileLog.Write($"Démarrage impossible : {e}");
-            return;
+            // Sans surveillance, ACAW marche quand même : il faudra le relancer après une modification à la main.
+            FileLog.Write($"Surveillance de config.json impossible : {e.Message}");
         }
-        var host = _adapters.Host;
-        host.StateChanged += state => _ui.BeginInvoke(() => Render(state));
-        SystemEvents.PowerModeChanged += OnPowerModeChanged;
-        host.Start();
 
-        _auto.Checked = host.AutoSwitch;
-        Render(host.State);
-        FileLog.Write($"ACAW démarré pour {config.Name}");
+        _retry.Tick += (_, _) => { if (_coordinator.Host is null) RefreshConfig(); };
+        _lockedRetry.Tick += (_, _) => { _lockedRetry.Stop(); RefreshConfig(); };
+        _retry.Start();
+
+        FileLog.Write("Lecture de la configuration…");
+        RefreshConfig();
     }
 
     protected override void Dispose(bool disposing)
@@ -64,7 +79,10 @@ internal sealed class TrayApp : ApplicationContext
         if (disposing)
         {
             SystemEvents.PowerModeChanged -= OnPowerModeChanged; // événement statique : à retirer sinon fuite
-            _adapters?.Dispose();
+            _watcher?.Dispose(); // d'abord : plus aucune relecture ne doit arriver pendant l'arrêt
+            _retry.Dispose();
+            _lockedRetry.Dispose();
+            _coordinator.Dispose();
             _icon.Visible = false;
             _icon.Dispose();
             _menu.Dispose();
@@ -75,11 +93,13 @@ internal sealed class TrayApp : ApplicationContext
 
     private void BuildMenu()
     {
-        _take.Click += (_, _) => _adapters?.Host.Request(new TakeRequested());
-        _release.Click += (_, _) => _adapters?.Host.Request(new ReleaseRequested());
-        // Click et non CheckedChanged : cocher la case par le code (au démarrage) ne doit rien déclencher.
+        _take.Click += (_, _) => _coordinator.Host?.Request(new TakeRequested());
+        _release.Click += (_, _) => _coordinator.Host?.Request(new ReleaseRequested());
+        // Click et non CheckedChanged : cocher la case par le code (à l'affichage) ne doit rien déclencher.
         _auto.Click += (_, _) => SetAutoSwitch(_auto.Checked);
         _startup.Click += (_, _) => SetStartup(_startup.Checked);
+        _airPods.DropDownItems.Add("…"); // sans élément, Windows n'affiche pas la flèche du sous-menu
+        _airPods.DropDownOpening += (_, _) => FillAirPodsMenu();
 
         _menu.Items.AddRange(
         [
@@ -88,13 +108,18 @@ internal sealed class TrayApp : ApplicationContext
             _take,
             _release,
             new ToolStripSeparator(),
+            _airPods,
             _auto,
             _startup,
             new ToolStripMenuItem("Ouvrir le journal", null, (_, _) => OpenLog()),
             new ToolStripSeparator(),
             new ToolStripMenuItem("Quitter", null, (_, _) => ExitThread()),
         ]);
-        _menu.Opening += (_, _) => _startup.Checked = _startupShortcut.IsEnabled;
+        _menu.Opening += (_, _) =>
+        {
+            _startup.Checked = _startupShortcut.IsEnabled;
+            if (_coordinator.Host is null) RefreshConfig(); // les AirPods viennent peut-être d'être appairés
+        };
 
         _icon.ContextMenuStrip = _menu;
         _icon.Icon = TrayIcons.For(SwitchState.Away, autoSwitch: false);
@@ -102,59 +127,82 @@ internal sealed class TrayApp : ApplicationContext
         _status.Text = "Démarrage…";
     }
 
-    private AcawConfig? LoadConfig()
+    private void RefreshConfig() => Safely(() =>
     {
-        string? problem;
-        try
-        {
-            var config = ConfigStore.Load(ConfigStore.DefaultPath);
-            if (config.IsConfigured && config.ModelNumber is not null) return config;
-            problem = "Aucun AirPods configuré. Lance « acaw setup » dans un terminal, puis relance ACAW.";
-        }
-        catch (InvalidDataException e)
-        {
-            problem = $"{e.Message}. Relance « acaw setup », puis relance ACAW.";
-        }
+        if (_coordinator.Refresh()) _lockedRetries = 0;
+        else if (++_lockedRetries <= MaxLockedRetries) _lockedRetry.Start();
+        else if (_lockedRetries == MaxLockedRetries + 1) FileLog.Write("config.json reste verrouillé : relu à la prochaine modification");
+    });
 
-        FileLog.Write(problem);
-        Disable("Non configuré", problem);
-        return null;
+    // Le sous-menu « AirPods » est rempli à chaque ouverture : un casque a pu être appairé entre-temps.
+    private void FillAirPodsMenu() => Safely(() =>
+    {
+        _airPods.DropDownItems.Clear();
+        var candidates = _coordinator.Candidates();
+        if (candidates.Count == 0)
+            _airPods.DropDownItems.Add(new ToolStripMenuItem("Aucun AirPods appairé à ce PC") { Enabled = false });
+        foreach (var headset in candidates)
+        {
+            var item = new ToolStripMenuItem(headset.Name)
+            {
+                Checked = AirPodsPicker.SameMac(headset.Mac, _coordinator.Config?.Mac),
+            };
+            item.Click += (_, _) => Safely(() => _coordinator.Choose(headset));
+            _airPods.DropDownItems.Add(item);
+        }
+        _airPods.DropDownItems.Add(new ToolStripSeparator());
+        _airPods.DropDownItems.Add(new ToolStripMenuItem("Paramètres Bluetooth…", null, (_, _) =>
+            Process.Start(new ProcessStartInfo("ms-settings:bluetooth") { UseShellExecute = true })));
+    });
+
+    // Nouvel hôte, ou plus d'hôte : on écoute le bon, et on met l'affichage à jour.
+    private void OnCoordinatorChanged()
+    {
+        var host = _coordinator.Host;
+        if (host != _subscribedHost)
+        {
+            if (_subscribedHost is not null) _subscribedHost.StateChanged -= OnHostStateChanged;
+            if (host is not null) host.StateChanged += OnHostStateChanged;
+            _subscribedHost = host;
+            if (host is not null) FileLog.Write($"ACAW démarré pour {_coordinator.Config!.Name}");
+        }
+        Render();
     }
 
-    // ACAW ne peut pas fonctionner : on garde l'icône (journal, Quitter) et on explique pourquoi.
-    private void Disable(string status, string message)
-    {
-        _status.Text = status;
-        _take.Enabled = _release.Enabled = _auto.Enabled = false;
-        _icon.ShowBalloonTip(10_000, "ACAW", message, ToolTipIcon.Warning);
-    }
+    // Levé sur le thread de l'hôte. On ne transmet pas l'état reçu : Render relit celui de l'hôte ACTUEL, pour
+    // qu'un message en retard de l'ancien hôte (configuration changée entre-temps) n'affiche pas un état faux.
+    private void OnHostStateChanged(SwitchState _) => _ui.BeginInvoke(Render);
 
-    private void Render(SwitchState state)
+    private void Render()
     {
-        bool auto = _adapters?.Host.AutoSwitch ?? false;
+        var host = _coordinator.Host;
+        if (host is null)
+        {
+            // ACAW ne peut pas fonctionner : on garde l'icône (AirPods, journal, Quitter) et on dit pourquoi.
+            string why = _coordinator.Problem ?? "Non configuré";
+            _status.Text = why;
+            _icon.Text = why.Length <= 127 ? why : why[..127];
+            _icon.Icon = TrayIcons.For(SwitchState.Away, autoSwitch: false);
+            _take.Enabled = _release.Enabled = _auto.Enabled = false;
+            return;
+        }
+
+        var state = host.State;
+        bool auto = _coordinator.Config?.AutoSwitch ?? true; // à jour tout de suite, contrairement à l'hôte (sa file)
         string text = TrayIcons.Describe(state, auto);
         _status.Text = text;
         _icon.Text = text.Length <= 127 ? text : text[..127]; // limite de Windows pour l'info-bulle
         _icon.Icon = TrayIcons.For(state, auto);
+        _auto.Enabled = true;
+        _auto.Checked = auto;
         _take.Enabled = state is SwitchState.Away or SwitchState.Lost or SwitchState.Releasing;
         _release.Enabled = state is SwitchState.OnWindows or SwitchState.Switching;
     }
 
     private void SetAutoSwitch(bool on)
     {
-        if (_adapters is null) return;
-        _adapters.Host.SetAutoSwitch(on);
-        try
-        {
-            // On relit le fichier avant d'écrire : « acaw setup » a pu le modifier entre-temps.
-            var path = ConfigStore.DefaultPath;
-            ConfigStore.Save(path, ConfigStore.Load(path) with { AutoSwitch = on });
-        }
-        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException)
-        {
-            FileLog.Write($"Réglage non enregistré : {e.Message}");
-        }
-        Render(_adapters.Host.State);
+        _coordinator.SetAutoSwitch(on);
+        Render();
     }
 
     // Erreurs attendues en touchant au dossier Démarrage ou au registre : droits, disque, ou COM (le raccourci).
@@ -175,12 +223,24 @@ internal sealed class TrayApp : ApplicationContext
         }
     }
 
+    // Levé sur un thread de Windows : ramené sur celui de l'interface, où vit le coordinateur.
     private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
     {
-        if (e.Mode == PowerModes.Resume)
+        if (e.Mode != PowerModes.Resume) return;
+        FileLog.Write("Sortie de veille");
+        _ui.BeginInvoke(() => _coordinator.Host?.OnResumed());
+    }
+
+    // Une erreur imprévue dans un clic ou une relecture ne doit jamais fermer l'application résidente.
+    private static void Safely(Action action)
+    {
+        try
         {
-            FileLog.Write("Sortie de veille");
-            _adapters?.Host.OnResumed();
+            action();
+        }
+        catch (Exception e)
+        {
+            FileLog.Write($"Erreur inattendue : {e}");
         }
     }
 
@@ -190,8 +250,17 @@ internal sealed class TrayApp : ApplicationContext
         Process.Start(new ProcessStartInfo(FileLog.Path) { UseShellExecute = true });
     }
 
+    /// <summary>Crée les branchements Windows et l'hôte pour une configuration (port du coordinateur).</summary>
+    private sealed class AdaptersFactory : IAcawServiceFactory
+    {
+        // Les objets COM de Windows doivent être créés hors du thread de l'interface (STA) :
+        // l'hôte les utilisera depuis ses propres threads (MTA). Task.Run s'en charge.
+        public IAcawService Create(AcawConfig config) =>
+            Task.Run(() => Adapters.CreateAsync(config)).GetAwaiter().GetResult();
+    }
+
     /// <summary>Les branchements Windows et l'hôte, créés et libérés ensemble.</summary>
-    private sealed class Adapters(AcawHost host, IDisposable[] owned) : IDisposable
+    private sealed class Adapters(AcawHost host, SpeakerMute speakers, IDisposable[] owned) : IAcawService
     {
         public AcawHost Host { get; } = host;
 
@@ -200,14 +269,27 @@ internal sealed class TrayApp : ApplicationContext
             var headset = new WindowsHeadset(config.Mac!);
             var media = await MediaSessions.CreateAsync();
             var radar = new AirPodsRadar(config.ModelNumber!.Value);
-            var host = new AcawHost(config, headset, media, new AudioMeter(), new SpeakerMute(), radar,
+            var speakers = new SpeakerMute();
+            var host = new AcawHost(config, headset, media, new AudioMeter(), speakers, radar,
                                     TimeProvider.System, FileLog.Write);
-            return new Adapters(host, [host, radar, media, headset]);
+            return new Adapters(host, speakers, [host, radar, media, headset]);
         }
+
+        public void Start() => Host.Start();
 
         public void Dispose()
         {
-            foreach (var item in owned) item.Dispose();
+            foreach (var item in owned) item.Dispose(); // l'hôte d'abord : il attend la fin de son ordre en cours
+            try
+            {
+                // Arrêté pendant l'arrivée des AirPods, l'hôte a pu laisser les haut-parleurs coupés (R7) :
+                // on les rend. Sans effet si ACAW ne les avait pas coupés.
+                speakers.Unmute();
+            }
+            catch (Exception e)
+            {
+                FileLog.Write($"Rétablissement du son impossible : {e.Message}");
+            }
         }
     }
 }

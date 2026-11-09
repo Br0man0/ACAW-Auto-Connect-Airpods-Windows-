@@ -7,8 +7,8 @@
 
 ```
              /  Recette manuelle  \        quelques scénarios, avec les vrais AirPods et l'iPhone
-            /    Tests Windows      \      9 tests fumée (vraies API, sans rien modifier) + 8 tests du démarrage
-           /  Tests d'intégration    \     21 tests, l'hôte entier avec de faux Windows
+            /    Tests Windows      \      9 tests fumée (vraies API, sans rien modifier) + 18 tests (démarrage, chemins de driver, config.json)
+           /  Tests d'intégration    \     22 tests de l'hôte + 18 du coordinateur de configuration, avec de faux Windows
           /  Invariants (aléatoire)   \    des milliers de séquences générées
          /     Tests unitaires         \   machine, tracker, décodeur, configuration
 ```
@@ -108,6 +108,18 @@ chaque événement, on vérifie des règles qui doivent **toujours** tenir :
 
 Le tracker audio a le sien : début et fin de lecture alternent toujours.
 
+Le **coordinateur de configuration** a les siens (`ConfigCoordinatorInvariantTests`, 1 000 séquences de 60
+opérations) : fichiers modifiés, abîmés, verrouillés ou supprimés, casques qui apparaissent et
+disparaissent, créations d'hôte qui échouent, clics dans le menu. Après chaque opération :
+
+1. jamais deux hôtes en marche en même temps ;
+2. l'hôte que voit l'icône est exactement celui qui tourne ;
+3. un hôte ne démarre qu'après l'arrêt de tous ceux d'avant (créer → arrêter l'ancien → démarrer) ;
+4. l'hôte en marche a une configuration utilisable, celle qu'annonce le coordinateur, et aucun problème
+   n'est affiché ;
+5. une simple relecture n'écrase jamais un fichier abîmé ;
+6. la sélection automatique ne choisit jamais au hasard entre plusieurs paires.
+
 > L'ajout de la règle 10 a fait échouer la règle 1 : le rétablissement du son peut sortir sur une annonce
 > BLE, si c'est le premier événement après l'échéance. C'est voulu (le son doit revenir dès que possible) :
 > la règle 1 a été précisée. C'est exactement le rôle des invariants, révéler les interactions entre règles.
@@ -148,6 +160,12 @@ minuteur. Seuls Windows et les AirPods sont remplacés par des faux, et une **fa
 | casque reconnecté par Windows sans notification | vu dans les 30 s |
 | message « ça joue » arrivé en retard | ignoré : on relit l’état réel |
 | file traitée en arrière-plan | oui, sans appel manuel |
+| hôte arrêté pendant un ordre Windows | l'arrêt attend la fin de l'ordre, puis plus rien ne part |
+
+`ConfigCoordinatorTests` raconte de la même façon la configuration : premier lancement avec une seule
+paire (choisie toute seule), plusieurs paires (rien au hasard, un seul message), liste vide à
+l'ouverture de session (pas de bulle), délai modifié (nouvel hôte créé avant l'arrêt de l'ancien),
+création qui échoue (l'ancien continue), fichier abîmé ou verrouillé, AirPods remplacés, choix dans le menu.
 
 ## La couverture
 
@@ -159,7 +177,7 @@ dotnet test tests/Acaw.Core.Tests --collect:"XPlat Code Coverage"
 
 | Zone | Lignes | Branches | Objectif |
 |---|---|---|---|
-| `Acaw.Core` (logique) | 98 % | 95 % | ≥ 90 % |
+| `Acaw.Core` (logique) | 97 % | — | ≥ 90 % |
 | `Acaw.Windows` (branchements) | — | — | couvert par les tests fumée et la recette |
 | `Acaw.Tray`, `Acaw.Cli` (affichage) | — | — | couvert par la recette |
 
@@ -203,3 +221,18 @@ quand on casse le code ? ».
 | 13 | cocher « Démarrer avec Windows », fermer la session, la rouvrir | ACAW démarre tout seul, sans console. Le journal montre « Lancement de … (Windows démarré il y a …) » **puis « ACAW démarré »** : la première ligne seule ne suffit pas | |
 | 13b | le désactiver dans Paramètres → Applications → Démarrage, puis ouvrir le menu de l'icône | la case « Démarrer avec Windows » est décochée | |
 | 14 | lancer `acaw-tray.exe` une seconde fois | rien (une seule icône) | |
+
+### Recette de la configuration
+
+Mêmes conditions (ACAW lancé depuis un terminal ordinaire). Garder le journal ouvert.
+
+| # | Geste | Attendu | ✓ |
+|---|---|---|---|
+| C1 | quitter ACAW, renommer `config.json` en `config.old.json`, relancer ACAW (une seule paire d'AirPods appairée) | bulle « ACAW pilote … », `config.json` recréé, la bascule marche | |
+| C2 | menu → AirPods | tes AirPods cochés, « Paramètres Bluetooth… » en bas | |
+| C3 | dans `config.json`, passer `PauseDelay` à `"00:00:10"` et enregistrer | journal : « Configuration appliquée » ; une pause rend les AirPods 10 s plus tard (remettre 5 s ensuite) | |
+| C4 | dans `config.json`, passer `AutoSwitch` à `false` | la case « Bascule automatique » se décoche, l'icône devient gris clair, sans redémarrage du moteur | |
+| C5 | supprimer une virgule dans `config.json` et enregistrer | une seule bulle « Configuration illisible… précédente gardée », la bascule continue ; corriger → plus de bulle | |
+| C6 | pendant une vidéo (AirPods sur le PC), modifier un délai | les AirPods restent sur le PC, le son ne reste jamais coupé | |
+| C7 | couper le Bluetooth du PC, quitter puis relancer ACAW, rallumer le Bluetooth | « Recherche des AirPods… » ou erreur, puis ACAW démarre tout seul en 30 s au plus | |
+| C8 | (si tu as d'autres AirPods ou des Beats) les appairer, puis les choisir dans le menu | ils sont pilotés tout de suite ; vérifier que `acaw status` les voit « éveillés » (hypothèse « modèle BLE = pid » à confirmer pour ce modèle) | |

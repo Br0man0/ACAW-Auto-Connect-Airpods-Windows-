@@ -348,4 +348,29 @@ public sealed class AcawHostTests : IDisposable
         await connected.Task.WaitAsync(TimeSpan.FromSeconds(5));
         host.Dispose();
     }
+
+    [Fact]
+    public async Task Arret_attend_la_fin_de_l_ordre_en_cours_puis_plus_rien_ne_part()
+    {
+        // Changement de configuration : l'ancien hôte est arrêté pendant qu'il envoie un ordre à Windows.
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        _headset.DuringConnect = () => { entered.Set(); release.Wait(TimeSpan.FromSeconds(5)); };
+        _host = new AcawHost(new AcawConfig { Mac = "A1:B2:C3:D4:E5:F6" },
+                             _headset, _media, _meter, _speakers, _radar, _time, _log.Add);
+        _host.Start();
+        _host.Request(new TakeRequested());
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(5)), "l'ordre Connect n'est jamais parti");
+
+        var stopping = Task.Run(_host.Dispose);
+
+        // Dispose ne doit pas finir tant que Connect est en cours…
+        await Assert.ThrowsAsync<TimeoutException>(() => stopping.WaitAsync(TimeSpan.FromMilliseconds(300)));
+        release.Set();
+        await stopping.WaitAsync(TimeSpan.FromSeconds(5)); // … puis finir dès que Connect rend la main
+        Assert.False(_radar.Running);
+        _host.Request(new TakeRequested()); // après l'arrêt : ignoré
+        Assert.Equal(0, _host.ProcessPending());
+        Assert.Equal(1, _headset.Connects);
+    }
 }

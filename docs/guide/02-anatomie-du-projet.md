@@ -17,20 +17,22 @@ AutoConnectAirpodWin (ACAW)/
 │  ├─ Acaw.Core/                  LE CERVEAU : logique pure, sans Windows
 │  │  ├─ Switching/               machine à états de l'ADR-0003 (événements, commandes, délais)
 │  │  ├─ Audio/                   tracker : « est-ce que le PC joue ? »
-│  │  ├─ Hosting/                 l'hôte (file d'événements) et ses ports (interfaces)
+│  │  ├─ Hosting/                 l'hôte (file d'événements), ses ports, le coordinateur de configuration
 │  │  ├─ Ble/                     décodage des annonces BLE des AirPods
-│  │  └─ Config/                  configuration (JSON)
+│  │  └─ Config/                  configuration (JSON), choix automatique des AirPods, comparaison
 │  ├─ Acaw.Windows/               LES MAINS : tout ce qui touche Windows (bibliothèque partagée)
 │  │  ├─ NativeMethods.txt/.json  API Windows que CsWin32 doit générer
 │  │  ├─ Bluetooth/               endpoints audio, reconnexion KS, notifications, WindowsHeadset
 │  │  ├─ Audio/                   volume crête (AudioMeter), contrôles média (MediaSessions)
 │  │  ├─ Ble/                     écoute BLE (BleScanner, AirPodsRadar)
+│  │  ├─ ConfigWatcher.cs         surveillance de config.json
+│  │  ├─ StartupShortcut.cs       raccourci « Démarrer avec Windows »
 │  │  └─ FileLog.cs               journal %LOCALAPPDATA%\ACAW\acaw.log
 │  ├─ Acaw.Tray/                  acaw-tray.exe : icône + menu (WinForms), sans console
 │  └─ Acaw.Cli/                   acaw.exe : setup, status, switch, release
 ├─ tests/
-│  ├─ Acaw.Core.Tests/            unitaires, invariants, intégration de l'hôte (faux ports)
-│  └─ Acaw.Windows.Tests/         tests fumée sur les vraies API Windows (lecture seule), tests du registre
+│  ├─ Acaw.Core.Tests/            unitaires, invariants, intégration de l'hôte et du coordinateur (faux ports)
+│  └─ Acaw.Windows.Tests/         tests fumée (vraies API, lecture seule), raccourci, chemins de driver, config.json
 └─ spikes/
    └─ Phase0/                     outil de mesure de la phase 0, figé
 ```

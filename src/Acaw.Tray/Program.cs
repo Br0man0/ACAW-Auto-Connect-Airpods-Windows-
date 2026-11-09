@@ -18,6 +18,9 @@ internal static class Program
         if (!first) return;
 
         ApplicationConfiguration.Initialize();
-        Application.Run(new TrayApp());
+        // « using » : en quittant, l'icône est libérée, donc l'hôte arrêté et le son coupé par ACAW rétabli.
+        // Application.Run ne le fait pas tout seul.
+        using var app = new TrayApp();
+        Application.Run(app);
     }
 }

@@ -25,14 +25,15 @@ ACAW se compose de deux programmes :
    ```bash
    dotnet publish src/Acaw.Cli -c Release -o "%LOCALAPPDATA%\Programs\ACAW"
    ```
-4. **Choisir les AirPods** :
-   ```bash
-   "%LOCALAPPDATA%\Programs\ACAW\acaw.exe" setup
-   ```
-   Tape le numéro des AirPods dans la liste. ACAW enregistre leur adresse et leur modèle dans
-   `%APPDATA%\ACAW\config.json`.
-5. **Lancer** `acaw-tray.exe` (double-clic dans `%LOCALAPPDATA%\Programs\ACAW`), puis, dans le menu de
+4. **Lancer** `acaw-tray.exe` (double-clic dans `%LOCALAPPDATA%\Programs\ACAW`), puis, dans le menu de
    l'icône, cocher **« Démarrer avec Windows »**.
+5. **Les AirPods sont choisis tout seuls** s'il n'y a qu'une paire d'AirPods appairée au PC : une bulle
+   le confirme. S'il y en a plusieurs, une bulle invite à choisir dans le menu de l'icône → **AirPods**.
+   Le choix est enregistré dans `%APPDATA%\ACAW\config.json` (adresse, modèle et nom des AirPods).
+
+> Lance `acaw-tray.exe` depuis l'Explorateur ou un terminal Windows ordinaire, **pas depuis un outil
+> empaqueté** comme l'application Claude : ses écritures dans `%APPDATA%` seraient redirigées ailleurs
+> (voir le [guide 7](07-application-residente.md#démarrer-avec-windows)).
 
 > Le dossier compte : « Démarrer avec Windows » retient le chemin de `acaw-tray.exe`. Lance-le toujours
 > depuis `%LOCALAPPDATA%\Programs\ACAW`, pas depuis le dossier de compilation (`bin\…`), qu'une nouvelle
@@ -67,6 +68,7 @@ Le menu de l'icône (clic droit) :
 | (ligne grisée) | l'état actuel |
 | Amener sur ce PC | prend les AirPods tout de suite, et les garde même sans son |
 | Rendre à l'iPhone | met le PC en pause et relâche les AirPods |
+| AirPods ▸ | les AirPods appairés au PC, avec une coche sur ceux qu'ACAW pilote. Cliquer une autre paire la fait piloter **tout de suite**, sans relancer ACAW. En bas : « Paramètres Bluetooth… » pour en appairer de nouveaux |
 | Bascule automatique | décocher pour suspendre (réunion, film sur la TV…) ; le choix est retenu |
 | Démarrer avec Windows | lancer ACAW à l'ouverture de session |
 | Ouvrir le journal | le détail de ce qu'ACAW a vu et fait |
@@ -78,7 +80,7 @@ La couleur de l'icône : 🟢 sur ce PC · 🟠 en cours · gris-bleu ailleurs �
 
 | Commande | Effet |
 |---|---|
-| `setup [numéro]` | choisir les AirPods (sans numéro, affiche la liste et demande) |
+| `setup [numéro]` | choisir les AirPods (sans numéro, affiche la liste et demande). Facultatif depuis que le menu de l'icône le fait ; si ACAW tourne, il prend le nouveau choix en compte tout seul |
 | `status` | connectés à ce PC ? éveillés ? combien d'écouteurs portés ? batteries |
 | `switch` | amener les AirPods sur ce PC, avec le temps mis |
 | `release` | rendre les AirPods : l'iPhone les reprend en 2 à 3 s |
@@ -103,21 +105,31 @@ En développement, `dotnet run --project src/Acaw.Cli -- status` fait la même c
 l'[ADR-0003](../adr/0003-regles-de-bascule.md) : `PauseDelay` (5 s), `SilenceDelay` (30 s), `Cooldown`
 (5 s), `AwakeWindow` (30 s), `SwitchTimeout` (30 s), `SoundConfirmDelay` (2 s), `SilenceConfirmDelay`
 (2 s), `UnmuteDelay` (1 s), `MaxMuteDuration` (6 s), et `MuteWhileSwitching` (`true` ; `false` pour ne
-jamais couper les haut-parleurs). On peut les modifier à la main (format `"00:00:05"`), puis relancer
-`acaw-tray.exe`.
+jamais couper les haut-parleurs). On peut les modifier à la main (format `"00:00:05"`) : **ACAW relit le
+fichier tout seul** une demi-seconde après l'enregistrement, sans qu'il faille le relancer.
+
+| Ce qui change dans le fichier | Effet |
+|---|---|
+| `AutoSwitch` seul | appliqué directement, comme la case du menu |
+| `Name` seul | rien (il ne sert qu'à l'affichage) |
+| adresse, modèle ou un délai | ACAW redémarre son moteur avec les nouveaux réglages. Une bascule en cours est interrompue, les AirPods restent où ils sont, et le son coupé est rétabli |
+| fichier abîmé (virgule oubliée…) | ACAW **garde les réglages en cours** et le signale par une bulle. Il suffit de corriger et d'enregistrer |
+| fichier supprimé | ACAW garde les réglages en cours ; s'il n'y a qu'une paire d'AirPods, il recrée le fichier avec les délais par défaut |
 
 ## Dépannage
 
 | Symptôme ou message | Que faire |
 |---|---|
-| bulle « Aucun AirPods configuré » | lancer `acaw setup`, puis relancer `acaw-tray.exe` |
-| `Configuration illisible (…)` | le fichier `config.json` a été abîmé : relancer `acaw setup`, qui le recrée |
-| `… n'est plus appairé à ce PC` | ré-appairer les AirPods dans Windows, puis relancer `acaw setup` |
+| « Recherche des AirPods… » | normal juste après l'ouverture de session : Windows ne liste pas encore les casques. ACAW réessaie toutes les 30 s, et à chaque ouverture du menu |
+| « Aucun AirPods appairé à ce PC » | appairer les AirPods (menu → AirPods → Paramètres Bluetooth…) : ACAW les prend dès qu'il les voit |
+| « Plusieurs AirPods sont appairés » | choisir les siens : menu → AirPods |
+| `Configuration illisible (…)` | le fichier `config.json` a été abîmé : le corriger, ou choisir les AirPods dans le menu, qui le réécrit |
+| `… n'est plus appairé à ce PC` | ré-appairer les AirPods, ou en choisir d'autres dans le menu. Si une seule autre paire est appairée, ACAW la prend tout seul |
 | `Bluetooth du PC coupé` / `Le Bluetooth du PC est indisponible` | activer le Bluetooth dans les paramètres Windows |
 | les AirPods ne viennent pas | boîtier fermé ou hors de portée ? `acaw status` dit s'ils sont éveillés ; sinon voir le journal |
 | ils viennent pour une simple notification | augmenter `SoundConfirmDelay` dans `config.json` |
 | ils repartent trop vite après une pause | augmenter `PauseDelay` |
 | ACAW ne démarre pas avec Windows | ouvrir le menu de l'icône : si « Démarrer avec Windows » est décoché, le cocher. Vérifier que `ACAW.lnk` est dans le dossier Démarrage (Win + R, `shell:startup`) et qu'ACAW est « Activé » dans Paramètres → Applications → Démarrage. Le journal commence chaque lancement par une ligne « Lancement de … (Windows démarré il y a …) » ; si le journal lui-même est en panne, la raison est dans `%TEMP%\acaw-journal-en-panne.log` |
 | le PC est resté muet (ne devrait jamais arriver) | relancer `acaw-tray.exe` : il rétablit au démarrage le son qu'il avait coupé ; sinon rétablir le son à la main et envoyer le journal |
-| `Windows refuse l'accès au driver… (E_NOINTERFACE)` | supprimer les AirPods des paramètres Bluetooth, les ré-appairer, relancer `acaw setup` |
+| `Windows refuse l'accès au driver… (E_NOINTERFACE)` | supprimer les AirPods des paramètres Bluetooth, les ré-appairer, puis les choisir dans le menu |
 | `Éveillés : non détectés` alors qu'ils sont portés | relancer `status` ; vérifier que le modèle dans `config.json` correspond à celui affiché par `setup` |

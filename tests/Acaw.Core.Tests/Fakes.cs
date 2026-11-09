@@ -12,6 +12,9 @@ internal sealed class FakeHeadset : IHeadsetPort
     public int Disconnects { get; private set; }
     public Exception? FailWith { get; set; }
 
+    /// <summary>Appelé pendant Connect : permet de simuler un ordre Windows qui prend du temps.</summary>
+    public Action? DuringConnect { get; set; }
+
     public event Action<HeadsetState>? StateChanged;
 
     public HeadsetState GetState() => State;
@@ -19,6 +22,7 @@ internal sealed class FakeHeadset : IHeadsetPort
     public void Connect()
     {
         Connects++;
+        DuringConnect?.Invoke();
         if (FailWith is not null) throw FailWith;
     }
 

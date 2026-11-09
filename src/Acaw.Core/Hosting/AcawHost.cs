@@ -22,6 +22,9 @@ public sealed class AcawHost : IDisposable
     /// </summary>
     public static readonly TimeSpan HeadsetCheckInterval = TimeSpan.FromSeconds(30);
 
+    /// <summary>Attente maximale de la fin du traitement en cours à l'arrêt (un appel à Windows bloqué, par exemple).</summary>
+    public static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(1);
+
     private static readonly TimeSpan RadarRetryDelay = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan SeenThrottle = TimeSpan.FromSeconds(1);
 
@@ -39,6 +42,7 @@ public sealed class AcawHost : IDisposable
 
     private AudioActivityTracker _tracker;
     private ITimer? _heartbeat;
+    private Task? _loop;                     // traitement de la file en arrière-plan
     private bool _connected;                 // dernier état connu du casque
     private DateTimeOffset? _radarRetryAt;   // redémarrage programmé de l'écoute BLE
     private DateTimeOffset _nextHeadsetCheck; // prochaine relecture de sécurité de l'état du casque
@@ -77,7 +81,7 @@ public sealed class AcawHost : IDisposable
         _radar.Stopped += OnRadarStopped;
         Enqueue(new Sync());
         _heartbeat = _time.CreateTimer(_ => Enqueue(new Heartbeat()), null, HeartbeatInterval, HeartbeatInterval);
-        if (background) _ = Task.Run(RunAsync);
+        if (background) _loop = Task.Run(RunAsync);
     }
 
     /// <summary>Transmet une demande de l'utilisateur (<see cref="TakeRequested"/>, <see cref="ReleaseRequested"/>).</summary>
@@ -93,7 +97,8 @@ public sealed class AcawHost : IDisposable
     public int ProcessPending()
     {
         int count = 0;
-        while (_inputs.Reader.TryRead(out var input))
+        // Après Dispose, on s'arrête même s'il reste des éléments : plus aucun ordre ne doit partir.
+        while (!_stop.IsCancellationRequested && _inputs.Reader.TryRead(out var input))
         {
             count++;
             try
@@ -109,10 +114,23 @@ public sealed class AcawHost : IDisposable
         return count;
     }
 
+    /// <summary>
+    /// Arrête l'hôte. Attend que l'élément en cours de traitement soit fini (au plus <see cref="StopTimeout"/>) :
+    /// quand la configuration change, l'ancien hôte ne doit plus rien envoyer une fois le nouveau démarré.
+    /// Ne jamais l'appeler depuis le thread de l'hôte (un abonné à <see cref="StateChanged"/>) : il s'attendrait lui-même.
+    /// </summary>
     public void Dispose()
     {
         _stop.Cancel();
         _heartbeat?.Dispose();
+        try
+        {
+            _loop?.Wait(StopTimeout);
+        }
+        catch (AggregateException)
+        {
+            // la boucle a échoué : elle est arrêtée quand même
+        }
         _headset.StateChanged -= OnHeadsetChanged;
         _media.PlayingChanged -= OnMediaChanged;
         _radar.AirPodsSeen -= OnAirPodsSeen;
