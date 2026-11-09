@@ -54,6 +54,10 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
         _releaseAt = null;         // une reprise annule la relâche programmée
         _idleDelay = options.SilenceDelay;
 
+        // R7 : les AirPods sont déjà en route (« Amener sur ce PC » sans rien qui jouait) : le son ne doit pas
+        // sortir des haut-parleurs en attendant.
+        if (State == SwitchState.Switching) return MuteIfPlaying() ? [SwitchCommand.MuteSpeakers] : None;
+
         if (State == SwitchState.Releasing)
         {
             // La déconnexion est déjà partie et ne s'annule pas : on reprendra les AirPods dès qu'elle sera confirmée.
@@ -176,21 +180,26 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
     {
         State = SwitchState.Switching;
         _waitUntil = Now + options.SwitchTimeout;
-        if (!options.MuteWhileSwitching || !_playing || _muted) return [SwitchCommand.Reconnect];
+        return MuteIfPlaying() ? [SwitchCommand.Reconnect, SwitchCommand.MuteSpeakers] : [SwitchCommand.Reconnect];
+    }
 
+    // true si on vient de couper les haut-parleurs (et il faut alors envoyer MuteSpeakers).
+    private bool MuteIfPlaying()
+    {
+        if (!options.MuteWhileSwitching || !_playing || _muted) return false;
         _muted = true;
         _mutedAt = Now;
         _unmuteAt = null;
-        return [SwitchCommand.Reconnect, SwitchCommand.MuteSpeakers];
+        return true;
     }
 
-    // R7 : le son revient dans tous les cas, et au plus tard après MaxMuteDuration. Vérifié après chaque
+    // R7 : le son revient dans tous les cas, et au plus tard après MuteTimeout. Vérifié après chaque
     // événement : on ne peut donc jamais laisser le PC muet par oubli d'un cas.
     private bool ShouldUnmute()
     {
         if (!_muted) return false;
         bool done = State is not (SwitchState.Switching or SwitchState.OnWindows) // abandon, relâche ou perte
-                 || Now - _mutedAt >= options.MaxMuteDuration                      // les AirPods tardent : on rend le son
+                 || Now - _mutedAt >= options.MuteTimeout                      // les AirPods tardent : on rend le son
                  || (_unmuteAt is { } at && Now >= at);                            // arrivés, et Windows a basculé le son
         if (done)
         {

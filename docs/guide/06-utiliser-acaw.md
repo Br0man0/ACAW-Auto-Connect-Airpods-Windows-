@@ -17,8 +17,10 @@ ACAW se compose de deux programmes :
    control printers
    ```
    Clic droit sur les AirPods → Propriétés → onglet Services → décocher « Mains libres téléphonie ».
-   Contrepartie : pas de micro AirPods sur le PC.
-   Si tu l'oublies, ACAW te le rappelle par une bulle, et `acaw status` l'indique.
+   Contrepartie : pas de micro AirPods sur le PC, sauf quand tu le réactives pour un appel (menu de
+   l'icône → **Micro des AirPods**, voir plus bas).
+   Plus simple encore : installe d'abord ACAW (étape 3). S'il trouve le profil actif, il affiche la bulle
+   « bascules lentes » : **clique dessus** et il le retire tout seul.
 3. **Installer ACAW** : télécharger `acaw-setup-X.Y.Z.exe` dans les **Releases** du dépôt GitHub, puis
    double-cliquer. Aucun droit administrateur n'est demandé, et rien d'autre n'est à installer (.NET est
    inclus).
@@ -54,14 +56,14 @@ Il n'y a rien à faire :
   après la fin du son ;
 - pendant que les AirPods arrivent, **les haut-parleurs sont coupés** : le son ne sort pas dans la pièce.
   La lecture continue (tu peux perdre 1 à 2 s du début). Si les AirPods ne viennent pas (posés trop
-  loin…), le son revient sur les haut-parleurs au bout de 6 s maximum.
+  loin…), le son revient sur les haut-parleurs au bout de 20 s maximum.
 
 Et si les AirPods ne sont pas là ?
 
 | Situation | Ce qui se passe |
 |---|---|
 | boîtier fermé, ou AirPods hors de portée du Bluetooth | ACAW ne tente rien : le son sort normalement des haut-parleurs |
-| AirPods sortis mais injoignables (autre pièce, pris par un autre appareil qui refuse) | ACAW essaie ; au pire 6 s de silence, puis le son revient sur les haut-parleurs, et l'essai s'arrête au bout de 30 s |
+| AirPods sortis mais injoignables (autre pièce, pris par un autre appareil qui refuse) | ACAW essaie ; au pire 20 s de silence, puis le son revient sur les haut-parleurs, et l'essai s'arrête au bout de 30 s |
 | Bluetooth du PC coupé, AirPods plus appairés | ACAW ne tente rien ou échoue proprement ; l'erreur est notée dans le journal |
 
 Dans aucun cas ACAW ne bloque la lecture ni ne s'arrête : il ne met en pause que si on lui demande de rendre
@@ -75,6 +77,7 @@ Le menu de l'icône (clic droit) :
 | Amener sur ce PC | prend les AirPods tout de suite, et les garde même sans son |
 | Rendre à l'iPhone | met le PC en pause et relâche les AirPods |
 | AirPods ▸ | les AirPods appairés au PC, avec une coche sur ceux qu'ACAW pilote. Cliquer une autre paire la fait piloter **tout de suite**, sans relancer ACAW. En bas : « Paramètres Bluetooth… » pour en appairer de nouveaux |
+| Micro des AirPods (appels) | coché : le micro des AirPods marche (Teams, Discord…), mais chaque bascule prend ~10 s. Décoché : bascules rapides (~2 s), pas de micro. Le changement prend ~3 s ; ACAW sait que le lien est brièvement coupé pendant ce temps, et ne met **rien en pause**. Le choix est retenu |
 | Bascule automatique | décocher pour suspendre (réunion, film sur la TV…) ; le choix est retenu |
 | Démarrer avec Windows | lancer ACAW à l'ouverture de session |
 | Ouvrir le journal | le détail de ce qu'ACAW a vu et fait |
@@ -92,6 +95,8 @@ La couleur de l'icône : 🟢 sur ce PC · 🟠 en cours · gris-bleu ailleurs �
 | `release` | rendre les AirPods : l'iPhone les reprend en 2 à 3 s |
 | `startup on` / `off` | démarrer ou non ACAW avec Windows (sans argument : l'état actuel). Même effet que la case du menu |
 | `quit` | arrêter ACAW proprement (le son coupé par ACAW est rétabli) ; l'installateur s'en sert |
+| `handsfree on` / `off` | activer ou retirer le micro des AirPods (sans argument : l'état actuel). Si ACAW tourne avec les AirPods sur le PC, préférer la case du menu : lui seul sait ignorer les coupures du lien |
+| `watch` | mesure : liaison radio, sortie audio et journal d'ACAW sur une même ligne de temps, jusqu'à Ctrl+C (test L du [guide 4](04-protocole-test-phase0.md)) |
 | `--version` | la version d'ACAW |
 
 ```
@@ -114,7 +119,8 @@ En développement, `dotnet run --project src/Acaw.Cli -- status` fait la même c
 `%APPDATA%\ACAW\config.json` contient l'état de la bascule automatique (`AutoSwitch`) et les délais de
 l'[ADR-0003](../adr/0003-regles-de-bascule.md) : `PauseDelay` (5 s), `SilenceDelay` (30 s), `Cooldown`
 (5 s), `AwakeWindow` (30 s), `SwitchTimeout` (30 s), `SoundConfirmDelay` (2 s), `SilenceConfirmDelay`
-(2 s), `UnmuteDelay` (1 s), `MaxMuteDuration` (6 s), et `MuteWhileSwitching` (`true` ; `false` pour ne
+(2 s), `UnmuteDelay` (1 s), `MuteTimeout` (20 s : durée maximale de la coupure des haut-parleurs pendant
+l'arrivée des AirPods ; elle s'appelait `MaxMuteDuration` et valait 6 s, trop court, jusqu'à la v0.5.0), et `MuteWhileSwitching` (`true` ; `false` pour ne
 jamais couper les haut-parleurs). On peut les modifier à la main (format `"00:00:05"`) : **ACAW relit le
 fichier tout seul** une demi-seconde après l'enregistrement, sans qu'il faille le relancer.
 

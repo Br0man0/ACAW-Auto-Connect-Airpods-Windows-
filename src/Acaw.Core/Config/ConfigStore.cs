@@ -35,7 +35,7 @@ public static class ConfigStore
         // Un délai négatif ferait planter les attentes plus loin : on le refuse ici, avec un message clair.
         var o = config.Switching ?? new();
         TimeSpan[] delays = [o.PauseDelay, o.SilenceDelay, o.Cooldown, o.AwakeWindow, o.SwitchTimeout,
-                             o.SoundConfirmDelay, o.SilenceConfirmDelay, o.UnmuteDelay, o.MaxMuteDuration];
+                             o.SoundConfirmDelay, o.SilenceConfirmDelay, o.UnmuteDelay, o.MuteTimeout];
         if (delays.Any(d => d < TimeSpan.Zero))
             throw new InvalidDataException($"Configuration illisible ({path}) : un délai est négatif.");
         return config with { Switching = o };

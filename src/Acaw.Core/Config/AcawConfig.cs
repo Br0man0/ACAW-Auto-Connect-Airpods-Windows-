@@ -19,6 +19,12 @@ public sealed record AcawConfig
     /// <summary>Bascule automatique active. Le menu permet de la suspendre sans quitter l'application.</summary>
     public bool AutoSwitch { get; init; } = true;
 
+    /// <summary>
+    /// L'utilisateur a choisi d'activer le micro des AirPods (profil mains libres) depuis ACAW : les bascules
+    /// sont lentes, mais c'est voulu, donc pas d'avertissement « bascules lentes » au démarrage.
+    /// </summary>
+    public bool Microphone { get; init; }
+
     public SwitchOptions Switching { get; init; } = new();
 
     [JsonIgnore] // calculé, pas enregistré

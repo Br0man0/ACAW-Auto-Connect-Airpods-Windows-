@@ -36,6 +36,10 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ToolStripMenuItem _airPods = new("AirPods");
     private readonly ToolStripMenuItem _auto = new("Bascule automatique") { CheckOnClick = true };
     private readonly ToolStripMenuItem _startup = new("Démarrer avec Windows") { CheckOnClick = true };
+    private const string MicText = "Micro des AirPods (appels)";
+    private readonly ToolStripMenuItem _mic = new(MicText);
+    private bool _micBusy;               // activation ou retrait du micro en cours (~3 s)
+    private Action? _balloonAction;      // ce que fait un clic sur la notification affichée
     private readonly Control _ui = new(); // sert à revenir sur le thread de l'interface depuis l'hôte ou le fichier
     private readonly StartupShortcut _startupShortcut = StartupShortcut.ForCurrentUser(Application.ExecutablePath);
     private readonly Timer _retry = new() { Interval = RetryIntervalMs };
@@ -56,7 +60,7 @@ internal sealed class TrayApp : ApplicationContext
         _coordinator = new ConfigCoordinator(new FileConfigSource(ConfigStore.DefaultPath), new WindowsHeadsetCatalog(),
                                              new AdaptersFactory(), FileLog.Write);
         _coordinator.Changed += OnCoordinatorChanged;
-        _coordinator.Notice += message => _icon.ShowBalloonTip(10_000, "ACAW", message, ToolTipIcon.Info);
+        _coordinator.Notice += message => ShowBalloon("ACAW", message, ToolTipIcon.Info);
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
         try
@@ -111,6 +115,15 @@ internal sealed class TrayApp : ApplicationContext
         _startup.Click += (_, _) => SetStartup(_startup.Checked);
         _airPods.DropDownItems.Add("…"); // sans élément, Windows n'affiche pas la flèche du sous-menu
         _airPods.DropDownOpening += (_, _) => FillAirPodsMenu();
+        _mic.Click += (_, _) => ToggleMicrophone(!_mic.Checked);
+        // Pas d'effacement à la fermeture : sous Windows 11, une bulle expirée reste dans le centre de
+        // notifications (Win + N) et peut être cliquée plus tard. Seule la notification suivante la remplace.
+        _icon.BalloonTipClicked += (_, _) =>
+        {
+            var action = _balloonAction;
+            _balloonAction = null;
+            if (action is not null) Safely(action);
+        };
 
         _menu.Items.AddRange(
         [
@@ -120,6 +133,7 @@ internal sealed class TrayApp : ApplicationContext
             _release,
             new ToolStripSeparator(),
             _airPods,
+            _mic,
             _auto,
             _startup,
             new ToolStripMenuItem("Ouvrir le journal", null, (_, _) => OpenLog()),
@@ -131,6 +145,7 @@ internal sealed class TrayApp : ApplicationContext
         {
             _startup.Checked = _startupShortcut.IsEnabled;
             if (_coordinator.Host is null) RefreshConfig(); // les AirPods viennent peut-être d'être appairés
+            ShowMicrophoneState();
         };
 
         _icon.ContextMenuStrip = _menu;
@@ -201,10 +216,66 @@ internal sealed class TrayApp : ApplicationContext
         }
         if (!active) return;
         FileLog.Write("Profil mains libres actif : chaque bascule prendra ~10 s au lieu de ~2 s");
-        _icon.ShowBalloonTip(15_000, "ACAW : bascules lentes",
-            "Le profil « mains libres » des AirPods est actif : chaque bascule prend ~10 s au lieu de 2. " +
-            "Pour le retirer : control printers → AirPods → Propriétés → Services → décocher « Mains libres téléphonie ».",
-            ToolTipIcon.Warning);
+        if (_coordinator.Config?.Microphone == true) return; // activé exprès depuis ACAW : pas d'avertissement
+        ShowBalloon("ACAW : bascules lentes",
+            "Le micro des AirPods (profil « mains libres ») est actif : chaque bascule prend ~10 s au lieu de 2. " +
+            "Clique ici pour le retirer, ou garde-le pour les appels (menu → Micro des AirPods).",
+            ToolTipIcon.Warning, onClick: () => ToggleMicrophone(on: false));
+    }
+
+    // La case reflète l'état réel du profil (il a pu être changé dans les propriétés Bluetooth de Windows).
+    private void ShowMicrophoneState()
+    {
+        if (_micBusy) return;
+        string? mac = _coordinator.Host is null ? null : _coordinator.Config?.Mac;
+        _mic.Enabled = mac is not null;
+        try
+        {
+            _mic.Checked = mac is not null && HandsFreeProfile.IsEnabled(mac);
+        }
+        catch (Exception e)
+        {
+            FileLog.Write($"Lecture du profil mains libres impossible : {e.Message}");
+        }
+    }
+
+    // Active ou retire le micro (~3 s, hors du thread de l'interface). L'hôte est prévenu : les coupures du lien
+    // que Windows provoque pendant ce temps ne sont pas une perte des AirPods (pas de pause, pas de relâche).
+    private void ToggleMicrophone(bool on)
+    {
+        if (_micBusy || _coordinator.Config?.Mac is not { } mac) return;
+        var host = _coordinator.Host;
+        _micBusy = true;
+        _mic.Enabled = false;
+        _mic.Text = on ? "Micro des AirPods : activation…" : "Micro des AirPods : retrait…";
+        FileLog.Write(on ? "Micro des AirPods : activation demandée" : "Micro des AirPods : retrait demandé");
+        host?.BeginProfileChange();
+
+        Task.Run(() => HandsFreeProfile.SetEnabled(mac, on)).ContinueWith(task => _ui.BeginInvoke(() =>
+        {
+            host?.EndProfileChange();
+            _micBusy = false;
+            _mic.Text = MicText;
+            _mic.Enabled = true;
+            if (task.Exception is { } e)
+            {
+                FileLog.Write($"Micro des AirPods : erreur {e.InnerException}");
+                ShowBalloon("ACAW", "Changement du micro impossible (détail dans le journal).", ToolTipIcon.Warning);
+                return;
+            }
+            var outcome = task.Result;
+            FileLog.Write($"Micro des AirPods : {outcome.Result} (code Windows {outcome.Code})");
+            if (outcome.Succeeded) Safely(() => _coordinator.SetMicrophone(on));
+            ShowBalloon("ACAW", HandsFreeProfile.Describe(outcome.Result, on),
+                        outcome.Succeeded ? ToolTipIcon.Info : ToolTipIcon.Warning);
+        }));
+    }
+
+    // Une seule notification à la fois : la suivante remplace la précédente, et son action de clic avec elle.
+    private void ShowBalloon(string title, string text, ToolTipIcon icon, Action? onClick = null)
+    {
+        _balloonAction = onClick;
+        _icon.ShowBalloonTip(10_000, title, text, icon);
     }
 
     // Levé sur le thread de l'hôte. On ne transmet pas l'état reçu : Render relit celui de l'hôte ACTUEL, pour
@@ -257,7 +328,7 @@ internal sealed class TrayApp : ApplicationContext
         catch (Exception e) when (IsStartupFailure(e))
         {
             _startup.Checked = _startupShortcut.IsEnabled;
-            _icon.ShowBalloonTip(5_000, "ACAW", $"Réglage impossible : {e.Message}", ToolTipIcon.Warning);
+            ShowBalloon("ACAW", $"Réglage impossible : {e.Message}", ToolTipIcon.Warning);
         }
     }
 

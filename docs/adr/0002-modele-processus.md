@@ -73,7 +73,7 @@ du filtre KS. On cible l'endpoint **A2DP**, jamais le mains libres (HFP).
 | R4 | Le scan BLE ralentit la connexion radio | ~~Vitesse~~ **Écarté** | **Tests C2 et contrôle (2026-11-02, mêmes conditions)** : médiane ~1,7 s avec scan, ~2,1 s sans scan, mêmes plages (≈ 1–4 s). Le scan passif ne ralentit pas la connexion : on le laisse actif en permanence, sans pause pendant `Switching` |
 | R5 | Autres appareils Apple ou autres AirPods à proximité | Faux « éveillés » | **Test C1** : filtrer par modèle BLE = « pid » du driver, ce qui écarte les autres appareils Apple ([notes BLE](../protocole-ble-airpods.md)). Il reste le cas de deux paires du même modèle. Le BLE autorise une bascule, il ne la déclenche pas |
 | R6 | Veille, radio coupée : watcher arrêté, objets COM périmés | Bascule morte | Réinitialiser sur les événements d'alimentation et de radio. **Observé le 2026-11-02** : après une sortie de veille moderne, `phase0 connect` a échoué alors que chaque lancement repart de zéro (pas d'objet COM périmé) : le problème viendrait donc de la pile Bluetooth au réveil. Cause à établir |
-| R7 | Couper les haut-parleurs pendant le switch puis crash | PC muet | **Fait en phase 2** (ADR-0003, R7) : rétablissement garanti par la machine (6 s max), et au démarrage suivant grâce à un fichier témoin |
+| R7 | Couper les haut-parleurs pendant le switch puis crash | PC muet | **Fait en phase 2** (ADR-0003, R7) : rétablissement garanti par la machine (20 s max depuis 2026-11-09, 6 s avant), et au démarrage suivant grâce à un fichier témoin |
 | R8 | `IPolicyConfig` (non documentée) pour changer la sortie par défaut | Casse à une MAJ | Exclu |
 
 ## Exigences non fonctionnelles

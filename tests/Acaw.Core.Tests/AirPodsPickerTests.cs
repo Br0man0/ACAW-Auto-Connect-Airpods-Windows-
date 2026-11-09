@@ -132,6 +132,12 @@ public class ConfigChangeTests
     }
 
     [Fact]
+    public void Choix_du_micro_seul_ne_fait_rien()
+    {
+        Assert.Equal(ConfigChange.Nothing, ConfigChanges.Compare(Running, Running with { Microphone = true }));
+    }
+
+    [Fact]
     public void Bascule_automatique_seule_s_applique_sans_redemarrer()
     {
         Assert.Equal(ConfigChange.AutoSwitch, ConfigChanges.Compare(Running, Running with { AutoSwitch = false }));

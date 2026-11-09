@@ -6,7 +6,7 @@
     GitHub Release la reprennent. Pour publier une version : docs/guide/09-publier-une-version.md.
   -->
   <PropertyGroup>
-    <Version>0.4.0</Version>
+    <Version>0.5.0</Version>
     <Product>ACAW (Auto Connect AirPods Windows)</Product>
     <Company>Romsy</Company>
     <Copyright>Romsy</Copyright>

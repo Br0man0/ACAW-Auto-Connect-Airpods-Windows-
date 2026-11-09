@@ -115,6 +115,15 @@ public sealed class ConfigCoordinator(IConfigSource source, IHeadsetCatalog cata
         {
             Report($"{next.Name} n'est plus appairé à ce PC. Choisis tes AirPods dans le menu de l'icône.");
         }
+        else if (pick.Reason == PickReason.Configured
+                 && paired.FirstOrDefault(h => AirPodsPicker.SameMac(h.Mac, next.Mac)) is { HasReadableName: true } same
+                 && same.Name != next.Name)
+        {
+            // Le nom a pu être enregistré illisible (Windows pas prêt à l'ouverture de session), ou les AirPods
+            // ont été renommés : on reprend celui que Windows donne maintenant.
+            next = next with { Name = same.Name };
+            TrySave(next);
+        }
 
         if (!AirPodsPicker.IsUsable(next))
         {
@@ -156,6 +165,16 @@ public sealed class ConfigCoordinator(IConfigSource source, IHeadsetCatalog cata
         _service.Host.SetAutoSwitch(on);
         Config = Config with { AutoSwitch = on }; // avant l'écriture : la relecture qui suivra ne verra aucun changement
         TrySave(ReadForUpdate() with { AutoSwitch = on });
+    }
+
+    /// <summary>
+    /// L'utilisateur active ou retire le micro des AirPods depuis ACAW : le choix est retenu (pas d'avertissement
+    /// « bascules lentes » s'il l'a voulu). Sans effet sur l'hôte, qui ne s'en sert pas.
+    /// </summary>
+    public void SetMicrophone(bool on)
+    {
+        if (Config is not null) Config = Config with { Microphone = on }; // avant l'écriture, comme SetAutoSwitch
+        TrySave(ReadForUpdate() with { Microphone = on });
     }
 
     public void Dispose()

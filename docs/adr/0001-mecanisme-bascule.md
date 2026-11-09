@@ -94,3 +94,25 @@ L'option A est **acceptée**. Le cycle complet fonctionne sans Apple ni driver :
 
 Le retour vers l'iPhone n'est pas déclenché par l'iPhone : c'est **le PC qui doit relâcher**. Le délai
 perçu au retour vaut donc « délai de silence avant relâche + ~2–3 s ».
+
+## Mise à jour : l'option B sert au micro (2026-11-09)
+
+`BluetoothSetServiceState`, écartée ici pour la bascule elle-même, sert désormais à **activer ou retirer le
+profil mains libres** (service `0000111E-…`) : la case « Micro des AirPods » d'ACAW. Mesuré : **sans droits
+administrateur** (compte de Romsy), ~3 s, mais l'activation coupe le lien deux fois quelques dixièmes de
+seconde ; l'hôte ignore ces coupures pendant l'opération ([guide 7](../guide/07-application-residente.md#le-micro-des-airpods-profil-mains-libres)).
+La recommandation reste : profil retiré au quotidien (bascules en ~2 s), activé le temps d'un appel.
+
+## Mise à jour : relâcher aussi le micro (2026-11-09)
+
+`ONESHOT_DISCONNECT` envoyé à la sortie musique (A2DP) ne coupe **que** la musique. Micro activé, le profil
+mains libres (HFP) reste connecté et garde les AirPods accrochés au PC 11 à 21 s : l'iPhone ne les reprend pas
+(mesure L3, [guide 4](../guide/04-protocole-test-phase0.md#test-l--la-liaison-radio-annonce-t-elle-larrivée-des-airpods--bascule-suivie-étape-0)).
+La relâche envoie donc aussi `ONESHOT_DISCONNECT` au micro.
+
+- **Premier essai, par sa sortie audio (comme pour la musique) : inopérant** (recette H9). Au moment de la
+  relâche, la sortie audio du micro n'est pas encore visible pour Windows : rien n'était envoyé.
+- **Retenu : directement au filtre du driver du micro**, `\\?\BTHHFENUM#BthHFPAudio#…#{6994ad04-…}\wave`
+  (CreateFile + `IOCTL_KS_PROPERTY`, ce que fait `IKsControl` en interne). Ce filtre existe tant que le profil
+  est activé, s'ouvre sans droits administrateur, et se retrouve par CfgMgr : son périphérique parent est le
+  service « Handsfree » des AirPods (`BTHENUM\{0000111E-…}…MAC…`), dont l'identifiant porte la MAC.

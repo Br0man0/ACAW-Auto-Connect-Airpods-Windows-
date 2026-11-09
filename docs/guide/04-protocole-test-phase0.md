@@ -175,6 +175,97 @@ retrait de l'autre. Les autres voies (partie chiffrée des annonces, canal AAP p
 Le test D reste utile pour refaire la mesure après une mise à jour du firmware des AirPods (attendre alors
 30 s au lieu de 10).
 
+## Test L : la liaison radio annonce-t-elle l'arrivée des AirPods ? (bascule suivie, étape 0)
+
+**Pourquoi.** Pendant une bascule, ACAW coupe les haut-parleurs et attend la sortie audio des AirPods, avec
+une limite de 20 s (`MuteTimeout`). C'est un délai à l'aveugle : la commande de connexion
+(`KSPROPERTY_ONESHOT_RECONNECT`) ne dit ni « en cours » ni « échoué ». Une connexion Bluetooth audio se fait
+pourtant en deux étapes : la **liaison radio** (ACL), puis le **profil musique** (A2DP), qui fait apparaître la
+sortie audio. Si la liaison radio s'établit nettement avant la sortie audio, et seulement quand les AirPods
+arrivent vraiment, ACAW pourrait suivre la bascule au lieu de deviner :
+- pas de liaison après N s → AirPods injoignables → son rétabli tout de suite ;
+- liaison établie → ils arrivent → haut-parleurs coupés jusqu'à l'arrivée, sans limite courte.
+
+**Premier constat (2026-11-09, 22:28).** Liaison radio **connectée** (WinRT et Win32) alors que la sortie audio
+était **déconnectée**. La liaison peut donc rester établie sans les AirPods sur le PC. Le test doit dire quand
+c'est le cas, et si la liaison reste malgré tout un signal utile.
+
+**L'outil.** `acaw watch` affiche sur une seule ligne de temps, à 50 ms près :
+
+| Source | Ce que c'est |
+|---|---|
+| `liaison WinRT` | état de la liaison radio poussé par Windows (`BluetoothDevice.ConnectionStatus`) |
+| `liaison Win32` | même chose par une autre API (`BluetoothGetDeviceInfo`, relevé toutes les 50 ms), pour recouper |
+| `sortie audio` | l'endpoint A2DP : `Connected` = le son va dans les AirPods |
+| `journal` | les lignes ajoutées au journal d'acaw-tray, dont `Commande Reconnect` |
+
+Après chaque `Commande Reconnect`, chaque ligne affiche `[+x s depuis Reconnect]` : c'est la mesure.
+
+**Déroulé.** acaw-tray tourne normalement. Dans **ton** terminal (pas celui de Claude) :
+
+```powershell
+acaw watch | Tee-Object "$env:USERPROFILE\Desktop\acaw-watch.txt"
+```
+
+| # | Situation | Répéter | Ce qu'on cherche |
+|---|---|---|---|
+| L1 | Micro des AirPods **retiré**, AirPods dans les oreilles sur l'iPhone (musique sur l'iPhone) : lancer une vidéo sur le PC, attendre l'arrivée, mettre en pause, attendre la relâche (5 s) | 5 fois | délais Reconnect → liaison, et liaison → sortie audio |
+| L2 | Pareil, AirPods portés mais **rien ne joue** sur l'iPhone | 3 fois | la liaison est-elle déjà là avant le Reconnect ? |
+| L3 | Micro des AirPods **coché** (bascules lentes) : comme L1 | 5 fois | où passent les ~10 s : avant ou après la liaison ? |
+| L4 | AirPods **dans le boîtier fermé**, posé à côté : menu → « Amener sur ce PC » | 3 fois | que fait la liaison quand ils ne viendront jamais ? (attendre 30 s à chaque fois) |
+| L5 | AirPods **dans la poche d'une veste dans une autre pièce**, boîtier ouvert : « Amener sur ce PC » | 2 fois | idem, hors de portée |
+| L6 | Sans rien faire, 2 min AirPods sur l'iPhone, puis 2 min AirPods rangés | 1 fois | la liaison bouge-t-elle toute seule ? |
+
+Ctrl+C pour arrêter, puis envoie-moi le fichier `acaw-watch.txt` (Bureau) : je fais le tableau des délais.
+
+**Résultats du 2026-11-09 (L1–L2 : 9 bascules, micro retiré ; L3 : 4 bascules, micro activé).**
+
+| Délai, depuis `Commande Reconnect` | Micro retiré (9) | Micro activé (4) |
+|---|---|---|
+| liaison radio établie | 0,50 à 3,94 s | 0,37 à 3,81 s |
+| **liaison → sortie audio** | **0,68 à 0,85 s** | **7,5 à 12,2 s** |
+| sortie audio connectée | 1,31 à 4,65 s | 7,90 à 14,15 s |
+| après la relâche : liaison coupée | **3,1 s** après la sortie audio (régulier) | **11 à 21 s** après |
+
+- WinRT et Win32 disent toujours la même chose, à 50 ms près : une seule source suffira.
+- La liaison radio s'établit **toujours avant** la sortie audio, et toutes les bascules l'ont eue en moins de
+  4 s. Le temps perdu avec le micro est **après** la liaison : c'est la mise en place des deux profils.
+- La liaison reste établie ~3 s après chaque relâche : c'est ce qu'a vu le premier constat de 22:28.
+- **Défaut trouvé (L3)** : micro activé, la relâche ne coupe que la musique (A2DP). Le micro (HFP) reste
+  connecté et garde les AirPods 11 à 21 s ; l'iPhone ne les reprend pas tout seul. Corrigé : la relâche coupe
+  aussi le micro (`BluetoothAudio.ReleaseHandsFree`). Le périphérique du micro n'a pas la MAC dans son
+  chemin ; on la lit dans son **parent** (`BTHENUM\{…111E…}…MAC…`), par CfgMgr.
+
+**Résultats du 2026-11-09, deuxième session (H9 puis L4–L6, micro activé).**
+
+- **L4–L6 ✅** : AirPods dans le boîtier fermé ou hors de portée, « Amener sur ce PC » 4 fois : **aucune
+  liaison radio**, jamais, et ACAW abandonne à 30 s. Une liaison n'apparaît que si les AirPods viennent.
+- **H9 ❌, premier correctif inopérant** : la sortie audio du micro n'est pas visible au moment de la relâche
+  (`acaw watch` : `micro (HFP)` à « profil retiré », puis `Connected` seulement 20 s après la relâche). Le
+  premier correctif la cherchait parmi les sorties audio : il ne trouvait rien, n'envoyait rien, et la
+  liaison restait jusqu'à 71 s. L'iPhone ne reprenait les AirPods qu'en les demandant dans ses réglages
+  Bluetooth.
+- **Second correctif** : l'ordre de déconnexion est envoyé **directement au filtre du driver du micro**
+  (`\\?\BTHHFENUM#BthHFPAudio#…#{6994ad04-…}\wave`), retrouvé par CfgMgr à partir de la MAC de son parent.
+  Ce filtre existe tant que le profil est activé, connecté ou non, et s'ouvre sans droits administrateur
+  (vérifié). Le journal note désormais « Micro des AirPods relâché aussi », ou le code Windows en cas de refus.
+- **H9 ✅ (23:19, 4 relâches, micro activé)** : « Micro des AirPods relâché aussi » à chaque fois, liaison
+  coupée **3,1 à 3,2 s** après la relâche (comme sans micro, contre 11 à 71 s avant), et l'iPhone reprend
+  les AirPods tout seul.
+
+**Verdict du test L** : première ligne du tableau de décision ci-dessous. La liaison arrive toujours après le
+Reconnect, toujours en moins de 4 s, bien avant le son quand le micro est activé (7 à 12 s d'écart), et jamais
+quand les AirPods ne viendront pas. La « bascule suivie » est réalisable : c'est la prochaine étape, une fois
+le H9 validé (fait).
+
+**Décision.**
+
+| Résultat | Suite |
+|---|---|
+| la liaison apparaît après le Reconnect, ≥ 2 s avant la sortie audio dans les bascules lentes, et jamais en L4/L5 | on code la bascule suivie : délai court sans liaison, coupure jusqu'à l'arrivée avec liaison |
+| la liaison est souvent déjà là avant le Reconnect (L2, constat de 22:28) | elle ne dit pas « ils arrivent » : seule sa **disparition** pendant la bascule sert (échec certain → son rétabli tout de suite) ; on garde la limite de 20 s pour le reste |
+| la liaison et la sortie audio arrivent ensemble | aucun signal utile : on garde la limite de 20 s, éventuellement relevée |
+
 ## Résultats à rapporter
 
 | Mesure | Valeur |

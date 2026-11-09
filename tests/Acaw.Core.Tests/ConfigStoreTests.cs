@@ -74,6 +74,18 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Equal(TimeSpan.FromSeconds(2), config.Switching.SoundConfirmDelay);
     }
 
+    [Fact]
+    public void Ancienne_limite_de_coupure_de_6_s_est_ignoree()
+    {
+        // Les config.json écrits jusqu'à la v0.5.0 contiennent « MaxMuteDuration » : 6 s, trop court (une
+        // bascule a duré 11,6 s). La clé a été renommée pour que ces fichiers passent à la nouvelle valeur.
+        Write("""{ "Mac": "A1:B2:C3:D4:E5:F6", "Switching": { "MaxMuteDuration": "00:00:06" } }""");
+
+        var config = ConfigStore.Load(ConfigPath);
+
+        Assert.Equal(TimeSpan.FromSeconds(20), config.Switching.MuteTimeout);
+    }
+
     [Theory]
     [InlineData("2027", (ushort)0x2027)]
     [InlineData("200e", (ushort)0x200E)]

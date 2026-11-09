@@ -157,7 +157,7 @@ de sens qu'une fois la v1 éprouvée. C reste trop incertaine.
   - Elle la rétablit (`UnmuteSpeakers`) **dans tous les cas** : 1 s après l'arrivée des AirPods (le temps
     que Windows leur passe le son), tout de suite en cas d'échec, d'abandon ou de relâche, et **au plus
     tard 6 s** après la coupure (`MaxMuteDuration`). Si les AirPods ne viennent pas, on entend donc au pire
-    6 s de silence, puis le son revient sur les haut-parleurs.
+    6 s de silence, puis le son revient sur les haut-parleurs. (Portée à 20 s le 2026-11-09 : voir plus bas.)
   - L'adaptateur ne rétablit que ce qu'il a lui-même coupé, et note la coupure dans un fichier : si ACAW
     s'arrête brutalement pendant une coupure, le démarrage suivant rétablit le son. C'était la crainte du
     risque R7 de l'ADR-0002.
@@ -165,3 +165,32 @@ de sens qu'une fois la v1 éprouvée. C reste trop incertaine.
   - **Alternative écartée : mettre la lecture en pause puis la relancer.** On ne perdrait pas les 2 premières
     secondes, mais ça ne marche qu'avec les lecteurs média (pas un jeu ni Discord), la relance n'est pas
     garantie par toutes les applis, et la pause serait vue comme une pause de l'utilisateur.
+
+## Mise à jour : la coupure des haut-parleurs tenait trop peu (2026-11-09)
+
+Constat de Romsy pendant la recette de la v0.5.0 : « parfois, quand je bascule, le son sort des
+haut-parleurs du PC ». Son journal le montre :
+
+```
+22:15:10.650  Événement PlaybackStarted (Away → Switching)
+22:15:10.651  Commande MuteSpeakers
+22:15:16.814  Délai écoulé (Switching → Switching)
+22:15:16.814  Commande UnmuteSpeakers          ← 6 s : les AirPods ne sont pas encore là
+22:15:22.229  Événement EndpointConnected       ← 11,6 s : 5,4 s de son sur les haut-parleurs
+```
+
+**Règle précisée : tant que les AirPods sont atteignables, le son ne sort pas des haut-parleurs.** Seul
+l'échec de la bascule (AirPods hors de portée, rangés) rend le son au PC.
+
+- **Limite portée de 6 s à 20 s** et renommée `MuteTimeout`. Une bascule a duré 11,6 s, et 10 à 13 s avec le
+  micro des AirPods (ADR-0001). L'ancienne clé `MaxMuteDuration` était **inscrite** dans chaque
+  `config.json` (le fichier enregistre tous les délais) : changer la valeur par défaut n'aurait rien changé
+  chez Romsy. Avec le nouveau nom, l'ancienne clé est ignorée à la lecture, puis disparaît au prochain
+  enregistrement. Le prix : si les AirPods ne viennent vraiment pas, jusqu'à 20 s de silence avant que le son
+  revienne sur les haut-parleurs.
+- **Lecture lancée pendant une bascule déjà en cours** (après « Amener sur ce PC » sans rien qui jouait) :
+  elle coupe désormais aussi les haut-parleurs. Avant, elle sortait des haut-parleurs jusqu'à l'arrivée.
+- **Reste ouvert, par choix** : un son hors lecteur média (jeu, Discord) doit durer 2 s avant qu'ACAW
+  réagisse (`SoundConfirmDelay`, pour écarter les notifications) ; pendant ces 2 s, il sort des
+  haut-parleurs. Le couper dès le premier son rendrait muettes toutes les notifications du PC tant que les
+  AirPods sont sur l'iPhone.

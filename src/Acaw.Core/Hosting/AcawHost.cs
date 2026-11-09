@@ -25,6 +25,12 @@ public sealed class AcawHost : IDisposable
     /// <summary>Attente maximale de la fin du traitement en cours à l'arrêt (un appel à Windows bloqué, par exemple).</summary>
     public static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(1);
 
+    /// <summary>Après une bascule de profil, délai avant de relire le casque : les coupures mesurées durent ~1 s.</summary>
+    public static readonly TimeSpan ProfileSettleDelay = TimeSpan.FromSeconds(3);
+
+    /// <summary>Durée maximale d'une bascule de profil (~3 s mesurées) : au-delà, on relit le casque quoi qu'il arrive.</summary>
+    public static readonly TimeSpan MaxProfileChange = TimeSpan.FromSeconds(30);
+
     private static readonly TimeSpan RadarRetryDelay = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan SeenThrottle = TimeSpan.FromSeconds(1);
 
@@ -43,7 +49,9 @@ public sealed class AcawHost : IDisposable
     private AudioActivityTracker _tracker;
     private ITimer? _heartbeat;
     private Task? _loop;                     // traitement de la file en arrière-plan
-    private bool _connected;                 // dernier état connu du casque
+    private bool _connected;                 // dernier état du casque transmis à la machine
+    private bool _profileChanging;           // bascule du profil mains libres en cours : coupures ignorées
+    private DateTimeOffset? _profileSettleAt; // fin de la bascule : relecture du casque
     private DateTimeOffset? _radarRetryAt;   // redémarrage programmé de l'écoute BLE
     private DateTimeOffset _nextHeadsetCheck; // prochaine relecture de sécurité de l'état du casque
     private long _lastSeenPost;              // anti-inondation des annonces BLE (horodatage)
@@ -92,6 +100,15 @@ public sealed class AcawHost : IDisposable
 
     /// <summary>À appeler au réveil de la veille : tout est relu et l'écoute BLE relancée (risque R6).</summary>
     public void OnResumed() => Enqueue(new Sync());
+
+    /// <summary>
+    /// Le profil mains libres va être activé ou retiré : les coupures du casque qui suivent ne sont pas une
+    /// perte des AirPods. À encadrer par <see cref="EndProfileChange"/>.
+    /// </summary>
+    public void BeginProfileChange() => Enqueue(new ProfileChange(Starting: true));
+
+    /// <summary>Le profil a changé : l'état réel du casque est relu <see cref="ProfileSettleDelay"/> plus tard.</summary>
+    public void EndProfileChange() => Enqueue(new ProfileChange(Starting: false));
 
     /// <summary>Traite tout ce qui attend dans la file. Renvoie le nombre d'éléments traités.</summary>
     public int ProcessPending()
@@ -158,7 +175,17 @@ public sealed class AcawHost : IDisposable
                 if (_autoSwitch) Feed(_tracker.OnPeak(_meter.ReadPeak()));
                 Feed([new Tick()]);
                 if (_radarRetryAt is { } at && _time.GetUtcNow() >= at) StartRadar();
+                if (_profileSettleAt is { } settled && _time.GetUtcNow() >= settled) EndProfileSuppression();
                 if (_time.GetUtcNow() >= _nextHeadsetCheck) CheckHeadset();
+                break;
+            case ProfileChange(true):
+                // Garde-fou : si la fin n'est jamais annoncée (erreur pendant l'opération), on relit quand même.
+                _profileSettleAt = _time.GetUtcNow() + MaxProfileChange;
+                if (!_profileChanging) Log("Bascule du profil mains libres : les coupures du casque sont ignorées");
+                _profileChanging = true;
+                break;
+            case ProfileChange(false):
+                if (_profileChanging) _profileSettleAt = _time.GetUtcNow() + ProfileSettleDelay;
                 break;
             case Forward(var e):
                 Feed([e]);
@@ -216,8 +243,22 @@ public sealed class AcawHost : IDisposable
         }
     }
 
+    // Fin de la bascule de profil : on relit l'état réel ; seul un vrai changement atteint la machine.
+    private void EndProfileSuppression()
+    {
+        _profileSettleAt = null;
+        _profileChanging = false;
+        Log("Bascule du profil mains libres terminée : relecture du casque");
+        CheckHeadset();
+    }
+
     private void ApplyHeadsetState(HeadsetState state)
     {
+        // Pendant une bascule du profil mains libres, Windows coupe le lien quelques dixièmes de seconde, deux
+        // fois (mesuré le 2026-11-09). Transmises, ces coupures feraient croire que l'iPhone a pris les AirPods :
+        // pause de la vidéo (R6), puis relâche 5 s plus tard (R2). On les ignore ; _connected reste la
+        // dernière valeur transmise, et la relecture de fin ne transmet que ce qui a vraiment changé.
+        if (_profileChanging) return;
         bool connected = state == HeadsetState.Connected;
         if (connected == _connected) return; // Windows peut répéter la même notification
         _connected = connected;
@@ -307,4 +348,5 @@ public sealed class AcawHost : IDisposable
     private sealed record RadarStopped : Input;
     private sealed record SetAuto(bool On) : Input;
     private sealed record Sync : Input;
+    private sealed record ProfileChange(bool Starting) : Input;
 }

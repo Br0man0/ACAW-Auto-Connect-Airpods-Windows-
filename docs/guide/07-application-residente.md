@@ -93,7 +93,7 @@ règle R7 de l'[ADR-0003](../adr/0003-regles-de-bascule.md) les coupe pendant ce
 ```
 lecture démarre ──► Reconnect + MuteSpeakers          (haut-parleurs coupés, la vidéo continue)
 AirPods arrivés ──► 1 s plus tard : UnmuteSpeakers    (Windows a passé le son aux AirPods)
-pas d'AirPods   ──► 6 s au plus tard : UnmuteSpeakers (le son revient sur les haut-parleurs)
+pas d'AirPods   ──► 20 s au plus tard : UnmuteSpeakers (le son revient sur les haut-parleurs)
 ```
 
 Trois sécurités pour ne jamais laisser le PC muet :
@@ -160,6 +160,40 @@ relu une seconde plus tard, sans bulle.
 Tout se passe sur le thread de l'interface : la surveillance du fichier et les minuteurs y sont ramenés.
 Le coordinateur n'a donc pas à gérer plusieurs threads à la fois. Seule la création des objets COM passe
 par `Task.Run` (règle de l'ADR-0002).
+
+## Le micro des AirPods (profil mains libres)
+
+Le profil « mains libres » (HFP) donne le micro des AirPods, mais rend chaque bascule lente (~10 s au lieu
+de ~2 s, ADR-0001). La case **Micro des AirPods** du menu l'active ou le retire, comme la case « Mains
+libres téléphonie » des propriétés Bluetooth.
+
+**Comment** : `HandsFreeProfile.SetEnabled` (`Acaw.Windows`) appelle `BluetoothSetServiceState`, l'API
+Windows qui active ou retire un service Bluetooth d'un appareil, avec l'identifiant du service
+« Handsfree » (`0000111E-…`). Mesuré le 2026-11-09 : **pas de droits administrateur nécessaires** (sur le
+compte de Romsy ; un compte standard reste à vérifier), environ **3 s**. L'appel tourne hors du thread de
+l'interface, et la case reste grisée pendant ce temps.
+
+**Le piège mesuré** : pendant l'activation, Windows coupe le lien avec les AirPods **deux fois, quelques
+dixièmes de seconde**. Sans précaution, ACAW croyait que l'iPhone avait pris les AirPods : pause de la
+vidéo (R6), puis relâche 5 s plus tard (R2), et l'iPhone les récupérait. D'où l'encadrement par l'hôte :
+
+```
+ clic sur la case ──► host.BeginProfileChange()   coupures du casque ignorées (rien transmis à la machine)
+                      SetEnabled (~3 s)
+                      host.EndProfileChange()     3 s plus tard : relecture de l'état réel du casque ;
+                                                  seul un VRAI changement est transmis (une perte réelle
+                                                  reste donc vue). Garde-fou : relecture au bout de 30 s
+                                                  si la fin n'est jamais annoncée.
+```
+
+**Ce qui est retenu** : `Microphone` dans `config.json` (appliqué sans recréer l'hôte). Si c'est toi qui as
+activé le micro, ACAW ne t'avertit plus des « bascules lentes » au démarrage. Sinon, il affiche la bulle,
+et **un clic dessus retire le profil**. La bulle et son action vont ensemble (`ShowBalloon`) : une
+notification plus récente remplace la précédente, et son action de clic avec elle.
+
+Windows ne renvoie pas toujours le code que décrit sa documentation : retirer un profil déjà absent donne
+`ERROR_NOT_FOUND` (1168), et non `E_INVALIDARG`. ACAW vérifie donc l'état **avant** l'appel, et ne touche à
+rien s'il est déjà celui demandé.
 
 ## Démarrer avec Windows
 

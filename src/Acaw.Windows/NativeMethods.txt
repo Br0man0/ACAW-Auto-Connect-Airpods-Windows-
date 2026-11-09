@@ -26,3 +26,14 @@ IShellLinkW
 IPersistFile
 CM_Get_Device_ID_List_Size
 CM_Get_Device_ID_List
+BluetoothFindFirstRadio
+BluetoothFindRadioClose
+BluetoothGetDeviceInfo
+BluetoothSetServiceState
+BLUETOOTH_SERVICE_ENABLE
+BLUETOOTH_SERVICE_DISABLE
+CM_Locate_DevNode
+CM_Get_Parent
+CM_Get_Device_IDW
+CreateFile
+DeviceIoControl

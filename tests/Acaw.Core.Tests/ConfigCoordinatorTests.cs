@@ -257,13 +257,53 @@ public sealed class ConfigCoordinatorTests : IDisposable
     [Fact]
     public void Nom_seul_change_ne_recree_rien()
     {
+        // Les AirPods ont été renommés dans les paramètres Bluetooth de Windows : c'est lui qui fait foi.
         RunningWith(Mine);
-        _file.Stored = _file.Stored with { Name = "Renommés" };
+        _catalog.Paired = [Mine with { Name = "Renommés" }];
 
         _coordinator.Refresh();
 
         Assert.Empty(_journal);
         Assert.Equal("Renommés", _coordinator.Config!.Name);
+        Assert.Equal("Renommés", _file.Stored.Name);
+    }
+
+    [Fact]
+    public void Nom_illisible_est_corrige_des_que_Windows_le_donne()
+    {
+        // Vu dans le journal de Romsy le 2026-11-09 : « ACAW démarré pour (nom illisible) ».
+        RunningWith(Mine with { Name = PairedHeadset.UnreadableName });
+        _catalog.Paired = [Mine]; // plus tard, Windows sait lire le nom
+
+        _coordinator.Refresh();
+
+        Assert.Equal(Mine.Name, _file.Stored.Name);
+        Assert.Equal(Mine.Name, _coordinator.Config!.Name);
+        Assert.Empty(_journal); // le nom seul ne recrée pas l'hôte
+    }
+
+    [Fact]
+    public void Nom_illisible_ne_remplace_jamais_un_bon_nom()
+    {
+        RunningWith(Mine);
+        _catalog.Paired = [Mine with { Name = PairedHeadset.UnreadableName }];
+
+        _coordinator.Refresh();
+
+        Assert.Equal(Mine.Name, _file.Stored.Name);
+    }
+
+    [Fact]
+    public void Choix_du_micro_est_retenu_sans_recreer_l_hote()
+    {
+        RunningWith(Mine);
+
+        _coordinator.SetMicrophone(true);
+        _coordinator.Refresh(); // la surveillance du fichier voit l'écriture
+
+        Assert.True(_file.Stored.Microphone);
+        Assert.True(_coordinator.Config!.Microphone);
+        Assert.Empty(_journal);
     }
 
     [Fact]

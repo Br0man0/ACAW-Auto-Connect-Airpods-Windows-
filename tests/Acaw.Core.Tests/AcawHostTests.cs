@@ -191,6 +191,76 @@ public sealed class AcawHostTests : IDisposable
         Assert.Equal(1, _headset.Connects); // pas de reprise
     }
 
+    // Vidéo en cours, AirPods sur le PC : la situation où l'on active le micro pour un appel.
+    private void WatchingVideoWithAirPods()
+    {
+        Start();
+        AirPodsAwake();
+        _media.Plays(true);
+        Run();
+        _headset.Becomes(HeadsetState.Connected);
+        Run();
+    }
+
+    [Fact]
+    public void Bascule_du_profil_mains_libres_ne_met_pas_en_pause_et_ne_rend_pas_les_AirPods()
+    {
+        // Mesuré le 2026-11-09 : activer le profil coupe le lien deux fois, quelques dixièmes de seconde.
+        WatchingVideoWithAirPods();
+
+        _host.BeginProfileChange();
+        Run();
+        _headset.Becomes(HeadsetState.Disconnected);
+        Run();
+        _headset.Becomes(HeadsetState.Connected);
+        Run();
+        _headset.Becomes(HeadsetState.Disconnected);
+        Run();
+        _headset.Becomes(HeadsetState.Connected);
+        Run();
+        _host.EndProfileChange();
+        Wait(10);
+
+        Assert.Equal(0, _media.Pauses);
+        Assert.Equal(0, _headset.Disconnects);
+        Assert.Equal(SwitchState.OnWindows, _host.State);
+    }
+
+    [Fact]
+    public void Vraie_perte_pendant_la_bascule_est_vue_a_la_relecture()
+    {
+        // Le profil change, et entre-temps l'iPhone a vraiment pris les AirPods.
+        WatchingVideoWithAirPods();
+
+        _host.BeginProfileChange();
+        Run();
+        _headset.Becomes(HeadsetState.Disconnected);
+        Run();
+        _host.EndProfileChange();
+        Run();
+        Assert.Equal(SwitchState.OnWindows, _host.State); // pas encore : on attend que tout se stabilise
+
+        Wait(AcawHost.ProfileSettleDelay.TotalSeconds + 0.5);
+
+        Assert.Equal(SwitchState.Lost, _host.State);
+        Assert.Equal(1, _media.Pauses);
+    }
+
+    [Fact]
+    public void Bascule_jamais_terminee_est_abandonnee_au_bout_du_delai_maximal()
+    {
+        // L'opération a échoué sans annoncer sa fin : les coupures ne doivent pas être ignorées pour toujours.
+        WatchingVideoWithAirPods();
+        _host.BeginProfileChange();
+        Run();
+        _headset.Becomes(HeadsetState.Disconnected);
+        Run();
+
+        Wait(AcawHost.MaxProfileChange.TotalSeconds + 0.5);
+
+        Assert.Equal(SwitchState.Lost, _host.State);
+    }
+
     [Fact]
     public void Notification_Windows_repetee_n_est_comptee_qu_une_fois()
     {

@@ -8,8 +8,8 @@
 ```
               /  Recette manuelle  \         quelques scénarios, avec les vrais AirPods et l'iPhone
              / Test d'installation  \        installation et désinstallation silencieuses (sur GitHub)
-            /    Tests Windows       \       10 tests fumée (vraies API, sans rien modifier) + 25 sans matériel
-           /  Tests d'intégration     \      22 tests de l'hôte + 18 du coordinateur de configuration, avec de faux Windows
+            /    Tests Windows       \       10 tests fumée (vraies API, sans rien modifier) + 37 sans matériel
+           /  Tests d'intégration     \      25 tests de l'hôte + 21 du coordinateur de configuration, avec de faux Windows
           /  Invariants (aléatoire)    \     des milliers de séquences générées
          /     Tests unitaires          \    machine, tracker, décodeur, configuration, version
 ```
@@ -135,7 +135,7 @@ casse, le message donne la graine et l'étape, par exemple
 
 **Ces tests détectent-ils vraiment les erreurs ?** Vérifié pendant la phase 2 : on a volontairement retiré
 la vérification « AirPods éveillés » de la machine. Les tests de scénario **et** les invariants ont échoué
-aussitôt, en désignant la règle 3. Même vérification pour la limite de 6 s de la coupure du son (règle 10)
+aussitôt, en désignant la règle 3. Même vérification pour la limite de 20 s de la coupure du son (règle 10)
 et pour les corrections de la revue de code. Les tests ont ensuite été relancés sur le code restauré.
 
 ## Les tests d'intégration : des situations réelles
@@ -166,6 +166,9 @@ minuteur. Seuls Windows et les AirPods sont remplacés par des faux, et une **fa
 | message « ça joue » arrivé en retard | ignoré : on relit l’état réel |
 | file traitée en arrière-plan | oui, sans appel manuel |
 | hôte arrêté pendant un ordre Windows | l'arrêt attend la fin de l'ordre, puis plus rien ne part |
+| micro activé pendant une vidéo (deux coupures du lien) | ni pause, ni relâche : les AirPods restent sur le PC |
+| l'iPhone prend vraiment les AirPods pendant la bascule du micro | vu à la relecture, 3 s après la fin : pause, état « perdu » |
+| bascule du micro qui ne se termine jamais | les coupures ne sont plus ignorées au bout de 30 s |
 
 `ConfigCoordinatorTests` raconte de la même façon la configuration : premier lancement avec une seule
 paire (choisie toute seule), plusieurs paires (rien au hasard, un seul message), liste vide à
@@ -220,7 +223,7 @@ quand on casse le code ? ».
 | 8 | menu « Rendre à l'iPhone » | AirPods rendus | |
 | 9 | décocher « Bascule automatique », lancer une vidéo | rien ; icône gris clair | |
 | 10 | boîtier fermé, lancer une vidéo | rien : le son sort normalement des haut-parleurs, sans coupure | |
-| 10b | AirPods sortis mais posés loin (autre pièce), lancer une vidéo | au pire 6 s de silence, puis le son revient sur les haut-parleurs | |
+| 10b | AirPods sortis mais posés loin (autre pièce), lancer une vidéo | au pire 20 s de silence, puis le son revient sur les haut-parleurs | |
 | 11 | mettre le PC en veille 1 min, réveiller, lancer une vidéo | la bascule marche encore | à faire |
 | 12 | couper puis rallumer le Bluetooth du PC | « Écoute BLE arrêtée » dans le journal, puis la bascule remarche | |
 | 13 | cocher « Démarrer avec Windows », fermer la session, la rouvrir | ACAW démarre tout seul, sans console. Le journal montre « Lancement d'ACAW … (Windows démarré il y a …) » **puis « ACAW démarré »** : la première ligne seule ne suffit pas | |
@@ -254,4 +257,18 @@ Avec la Release téléchargée sur GitHub, depuis l'Explorateur (jamais depuis C
 | I4 | fermer la session, la rouvrir | ACAW démarre seul (journal : « Lancement d'ACAW X.Y.Z » puis « ACAW démarré ») | |
 | I5 | Paramètres → Applications → ACAW → Désinstaller, répondre **Non** à la question des réglages | ACAW arrêté, fichiers, raccourci du menu Démarrer et démarrage avec Windows retirés ; `%APPDATA%\ACAW\config.json` toujours là | |
 | I6 | réinstaller, puis désinstaller en répondant **Oui** | plus rien d'ACAW dans `%APPDATA%` ni dans `%LOCALAPPDATA%` | |
-| I7 | (profil mains libres réactivé pour l'essai) lancer ACAW | bulle « bascules lentes » une seule fois ; `acaw status` affiche « Profil mains libres : ACTIF » | |
+| I7 | (profil mains libres réactivé pour l'essai) lancer ACAW | bulle « bascules lentes » une seule fois ; `acaw status` affiche « Profil mains libres : ACTIF » | ✅ 2026-11-09 |
+
+### Recette du micro des AirPods (v0.5.0)
+
+| # | Geste | Attendu | ✓ |
+|---|---|---|---|
+| H1 | profil réactivé à la main (propriétés Bluetooth), lancer ACAW, **cliquer sur la bulle** « bascules lentes » | ~3 s plus tard, bulle « Micro des AirPods retiré » ; `acaw handsfree` : « retiré » | |
+| H2 | vidéo en cours, AirPods sur le PC : menu → cocher **Micro des AirPods** | case grisée « activation… » ~3 s ; **la vidéo ne se met pas en pause**, les AirPods **restent sur le PC** ; journal : « coupures du casque ignorées » puis « relecture du casque », aucun `Lost` | |
+| H3 | passer un appel Discord ou Teams avec le micro des AirPods | ta voix passe | |
+| H4 | quitter et relancer ACAW avec le micro coché | **pas** de bulle « bascules lentes » (choix retenu) ; la case est cochée | |
+| H5 | décocher la case pendant une vidéo | ~3 s, pas de pause, AirPods toujours sur le PC ; bulle « retiré » | |
+| H6 | (sur un compte Windows **standard**, si tu en as un) cocher la case | soit ça marche, soit une bulle explique de passer par les propriétés Bluetooth : à noter dans le guide 7 | |
+| H7 | micro des AirPods **coché** (bascules lentes), AirPods sur l'iPhone : lancer une vidéo, et recommencer 5 fois | **aucun son sur les haut-parleurs** pendant la bascule, même quand elle dure plus de 10 s ; journal : `UnmuteSpeakers` toujours **après** `EndpointConnected` | ✅ |
+| H9 | micro des AirPods **coché**, `acaw watch` lancé (journal attendu : « Micro des AirPods relâché aussi ») : vidéo sur le PC, attendre l'arrivée, pause, attendre la relâche (5 s) ; 3 fois | l'iPhone reprend les AirPods comme micro décoché ; `acaw watch` : `micro (HFP)` passe à `Disconnected` juste après `sortie audio`, puis la liaison tombe ~3 s plus tard (et non 11 à 21 s) | ✅ |
+| H8 | AirPods sur l'iPhone, rien ne joue : menu → « Amener sur ce PC », puis lancer une vidéo tout de suite | aucun son sur les haut-parleurs ; journal : `MuteSpeakers` juste après `PlaybackStarted` | ✅ |

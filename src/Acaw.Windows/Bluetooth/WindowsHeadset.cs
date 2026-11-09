@@ -33,7 +33,17 @@ public sealed class WindowsHeadset(string mac) : IHeadsetPort, IDisposable
 
     public void Connect() => BluetoothAudio.Connect(Resolve() ?? throw NotFound());
 
-    public void Disconnect() => BluetoothAudio.Disconnect(Resolve() ?? throw NotFound());
+    /// <summary>
+    /// Relâche la musique (A2DP), puis le micro (HFP) s'il est connecté. Sans la seconde étape, le micro activé
+    /// garde les AirPods accrochés au PC 11 à 21 s après la relâche, et l'iPhone ne les reprend pas (mesuré le
+    /// 2026-11-09, guide 4, test L3).
+    /// </summary>
+    public void Disconnect()
+    {
+        BluetoothAudio.Disconnect(Resolve() ?? throw NotFound());
+        if (BluetoothAudio.ReleaseHandsFree(mac) is { } code)
+            FileLog.Write(code == 0 ? "Micro des AirPods relâché aussi" : $"Relâche du micro des AirPods refusée (code Windows {code})");
+    }
 
     public void Dispose() => Forget();
 

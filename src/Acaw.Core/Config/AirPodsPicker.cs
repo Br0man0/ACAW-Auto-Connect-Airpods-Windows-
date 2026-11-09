@@ -7,7 +7,13 @@ namespace Acaw.Core.Config;
 /// <param name="ModelId">Modèle (« pid » du driver, ex. « 2027 »), ou null s'il est inconnu.</param>
 /// <param name="Name">Nom affiché par Windows.</param>
 /// <param name="IsApple">true pour un appareil Apple : seuls ceux-là émettent les annonces BLE qu'ACAW comprend.</param>
-public sealed record PairedHeadset(string Mac, string? ModelId, string Name, bool IsApple);
+public sealed record PairedHeadset(string Mac, string? ModelId, string Name, bool IsApple)
+{
+    /// <summary>Nom donné quand Windows ne sait pas (encore) lire celui de l'appareil, par ex. à l'ouverture de session.</summary>
+    public const string UnreadableName = "(nom illisible)";
+
+    public bool HasReadableName => !string.IsNullOrWhiteSpace(Name) && Name != UnreadableName;
+}
 
 /// <summary>Pourquoi <see cref="AirPodsPicker"/> a choisi, ou n'a pas choisi.</summary>
 public enum PickReason

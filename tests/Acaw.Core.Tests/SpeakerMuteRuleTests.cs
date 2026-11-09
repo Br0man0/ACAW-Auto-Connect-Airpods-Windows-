@@ -6,7 +6,7 @@ namespace Acaw.Core.Tests;
 
 /// <summary>
 /// Règle R7 : pendant que les AirPods arrivent, le son ne doit pas sortir des haut-parleurs. On les coupe,
-/// et on les rétablit dans TOUS les cas : arrivée des AirPods, échec, abandon, ou au plus tard après 6 s.
+/// et on les rétablit dans TOUS les cas : arrivée des AirPods, échec, abandon, ou au plus tard après 20 s.
 /// </summary>
 public class SpeakerMuteRuleTests
 {
@@ -47,13 +47,47 @@ public class SpeakerMuteRuleTests
     }
 
     [Fact]
-    public void AirPods_qui_tardent_le_son_revient_sur_les_haut_parleurs_apres_6_s()
+    public void Bascule_lente_de_11_6_s_le_son_ne_sort_jamais_des_haut_parleurs()
+    {
+        // Relevé du journal de Romsy, 2026-11-09 22:15 : les AirPods sont arrivés en 11,6 s. Avec l'ancienne
+        // limite de 6 s, le son était rétabli à 6 s et sortait des haut-parleurs pendant 5,6 s.
+        VideoStarts();
+        for (int i = 0; i < 46; i++) Assert.Empty(After(0.25)); // 11,5 s de battements : toujours coupé
+        _time.Advance(TimeSpan.FromSeconds(0.1));
+        Assert.Empty(Send(new EndpointConnected()));
+
+        Assert.Equal([UnmuteSpeakers], After(1.1)); // rétabli seulement une fois les AirPods là
+    }
+
+    [Fact]
+    public void AirPods_qui_ne_viennent_pas_le_son_revient_sur_les_haut_parleurs_apres_20_s()
     {
         VideoStarts();
 
-        Assert.Empty(After(5.9));
+        Assert.Empty(After(19.9));
         Assert.Equal([UnmuteSpeakers], After(0.2));
         Assert.Equal(SwitchState.Switching, _machine.State); // la connexion peut encore réussir
+    }
+
+    [Fact]
+    public void Video_lancee_pendant_un_Amener_sur_ce_PC_coupe_les_haut_parleurs()
+    {
+        Assert.Equal([Reconnect], Send(new TakeRequested())); // rien ne joue : rien à couper
+        _time.Advance(TimeSpan.FromSeconds(1));
+
+        Assert.Equal([MuteSpeakers], Send(new PlaybackStarted())); // les AirPods sont en route : pas de fuite
+        _time.Advance(TimeSpan.FromSeconds(2));
+        Send(new EndpointConnected());
+        Assert.Equal([UnmuteSpeakers], After(1.1));
+    }
+
+    [Fact]
+    public void Video_lancee_pendant_un_Amener_sur_ce_PC_ne_coupe_pas_si_option_desactivee()
+    {
+        _machine = new SwitchStateMachine(new SwitchOptions { MuteWhileSwitching = false }, _time);
+        Send(new TakeRequested());
+
+        Assert.Empty(Send(new PlaybackStarted()));
     }
 
     [Fact]

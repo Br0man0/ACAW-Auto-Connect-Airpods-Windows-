@@ -22,6 +22,10 @@ const string Usage = """
       release          rendre les AirPods (l'iPhone les reprend en quelques secondes)
       startup on|off   démarrer ou non acaw-tray avec Windows (sans argument : l'état actuel)
       quit             arrêter acaw-tray proprement (le son coupé par ACAW est rétabli)
+      handsfree on|off micro des AirPods (profil mains libres) : on = micro pour les appels, bascules
+                       lentes ; off = bascules rapides (sans argument : l'état actuel)
+      watch            mesure : affiche la liaison radio, la sortie audio et le journal d'ACAW sur
+                       une même ligne de temps (Ctrl+C pour arrêter)
       --version        la version d'ACAW
     """;
 const string BluetoothOff = "Bluetooth du PC coupé (ou casque absent pour Windows).";
@@ -55,6 +59,8 @@ try
         "status" => Status(),
         "switch" => Switch(),
         "release" => Release(),
+        "handsfree" => HandsFree(args.ElementAtOrDefault(1)),
+        "watch" => Watch(),
         _ => Fail(Usage),
     };
 }
@@ -114,6 +120,152 @@ int Startup(string? action)
     catch (Exception e) when (e is IOException or UnauthorizedAccessException)
     {
         throw new UserError($"Réglage du démarrage impossible : {e.Message}");
+    }
+}
+
+// Micro des AirPods = profil mains libres. Même code que la case du menu de l'icône ; le choix est retenu
+// dans config.json (Microphone), pour qu'ACAW n'avertisse pas des bascules lentes si c'est voulu.
+int HandsFree(string? action)
+{
+    RequireEndpoint();
+    if (action is null or "status")
+    {
+        Console.WriteLine(HandsFreeProfile.IsEnabled(config.Mac!)
+            ? "Micro des AirPods : actif (bascules lentes, ~10 s)"
+            : "Micro des AirPods : retiré (bascules rapides, ~2 s)");
+        return 0;
+    }
+    if (action is not ("on" or "off")) return Fail(Usage);
+
+    bool on = action == "on";
+    // acaw-tray, lui, ignore les coupures du lien pendant la bascule ; depuis ici, il ne le sait pas.
+    if (Process.GetProcessesByName("acaw-tray").Length > 0)
+        Console.WriteLine("Conseil : ACAW tourne ; la case « Micro des AirPods » de son menu évite qu'il prenne les coupures pour une perte.");
+    Console.Write(on ? "Activation du micro (~3 s)… " : "Retrait du micro (~3 s)… ");
+    var outcome = HandsFreeProfile.SetEnabled(config.Mac!, on);
+    Console.WriteLine();
+    Console.WriteLine(HandsFreeProfile.Describe(outcome.Result, on));
+    if (!outcome.Succeeded)
+    {
+        Console.WriteLine($"(code Windows {outcome.Code} / 0x{outcome.Code:X8})");
+        return 2;
+    }
+    new FileConfigSource(configPath).Save(ConfigStore.Load(configPath) with { Microphone = on });
+    return 0;
+}
+
+// Mesure de l'étape 0 « bascule suivie » (guide 4, test L) : la liaison radio s'établit-elle nettement avant la
+// sortie audio ? Trois sources, plus le journal d'acaw-tray, sur une seule ligne de temps. Passif : ne commande
+// rien, acaw-tray continue de basculer comme d'habitude.
+int Watch()
+{
+    var ep = RequireEndpoint();
+    string mac = config.Mac!;
+    var gate = new Lock();
+    DateTime? reconnectAt = null;
+
+    void Print(DateTime at, string source, string text)
+    {
+        lock (gate)
+        {
+            string since = reconnectAt is { } t && at >= t ? $"   [+{(at - t).TotalSeconds:F2} s depuis Reconnect]" : "";
+            Console.WriteLine($"{at:HH:mm:ss.fff}  {source,-16}{text}{since}");
+        }
+    }
+
+    // 1. La liaison radio selon WinRT : un événement, poussé par Windows.
+    using var device = global::Windows.Devices.Bluetooth.BluetoothDevice
+        .FromBluetoothAddressAsync(HandsFreeProfile.ParseAddress(mac)).AsTask().GetAwaiter().GetResult();
+    if (device is not null)
+    {
+        Print(DateTime.Now, "liaison WinRT", $"{device.ConnectionStatus} (départ)");
+        device.ConnectionStatusChanged += (d, _) => Print(DateTime.Now, "liaison WinRT", d.ConnectionStatus.ToString());
+    }
+    else Print(DateTime.Now, "liaison WinRT", "appareil introuvable pour WinRT");
+
+    using var stop = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
+    Console.WriteLine($"Mesure en cours pour {ep.Name}. Fais tes bascules ; Ctrl+C pour arrêter.");
+
+    // 2 et 3. La liaison selon Win32 et la sortie audio, relevées toutes les 50 ms. Plus le journal d'acaw-tray.
+    long journalAt = File.Exists(Acaw.Windows.FileLog.Path) ? new FileInfo(Acaw.Windows.FileLog.Path).Length : 0;
+    string pending = "";
+    bool first = true;
+    bool? lastLink = null;
+    HeadsetState lastAudio = default;
+    BtEndpoint? handsFree = null;
+    bool micEnabled = false;
+    string lastMic = "";
+    int turn = 0;
+    while (!stop.IsCancellationRequested)
+    {
+        bool? link = BluetoothLink.IsConnected(mac);
+        if (first || link != lastLink)
+            Print(DateTime.Now, "liaison Win32", link switch { true => "connectée", false => "déconnectée", null => "illisible" });
+        lastLink = link;
+
+        HeadsetState audio;
+        try { audio = BluetoothAudio.GetState(ep.Id); }
+        catch (COMException) { audio = HeadsetState.Absent; }
+        if (first || audio != lastAudio) Print(DateTime.Now, "sortie audio", audio.ToString());
+        lastAudio = audio;
+
+        // Le micro (profil mains libres) : recherché chaque seconde, car il apparaît et disparaît avec la case.
+        // Le filtre du driver dit si le profil est activé ; la sortie audio, souvent invisible, dit s'il est connecté.
+        if (++turn % 20 == 1)
+        {
+            micEnabled = BluetoothAudio.HandsFreeFilterFor(mac) is not null;
+            handsFree = micEnabled ? BluetoothAudio.FindHandsFree(mac) : null;
+        }
+        string mic;
+        try
+        {
+            mic = !micEnabled ? "profil retiré"
+                : handsFree is null ? "profil activé (sortie audio invisible)"
+                : BluetoothAudio.GetState(handsFree.Id).ToString();
+        }
+        catch (COMException) { mic = "profil activé (sortie audio invisible)"; handsFree = null; }
+        if (first || mic != lastMic) Print(DateTime.Now, "micro (HFP)", mic);
+        lastMic = mic;
+        first = false;
+
+        (journalAt, pending) = ReadJournal(journalAt, pending, line =>
+        {
+            DateTime at = DateTime.TryParseExact(line.AsSpan(0, Math.Min(23, line.Length)), "yyyy-MM-dd HH:mm:ss.fff",
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) ? parsed : DateTime.Now;
+            if (line.Contains("Commande Reconnect", StringComparison.Ordinal))
+            {
+                lock (gate) reconnectAt = at;
+                Console.WriteLine("──────────────────────────────────────────────────────────────");
+            }
+            Print(at, "journal", line.Length > 25 ? line[25..] : line);
+        });
+        stop.Token.WaitHandle.WaitOne(50);
+    }
+    return 0;
+}
+
+// Les lignes ajoutées au journal depuis la dernière lecture (le journal reste ouvert en écriture par acaw-tray).
+static (long Position, string Pending) ReadJournal(long position, string pending, Action<string> onLine)
+{
+    string path = Acaw.Windows.FileLog.Path;
+    try
+    {
+        if (!File.Exists(path)) return (0, "");
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        if (stream.Length < position) position = 0; // journal renommé (> 1 Mo) : on repart du début
+        if (stream.Length == position) return (position, pending);
+        stream.Position = position;
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        string text = pending + reader.ReadToEnd();
+        int end = text.LastIndexOf('\n');
+        if (end < 0) return (stream.Length, text);
+        foreach (string line in text[..end].Split('\n')) if (line.TrimEnd('\r') is { Length: > 0 } l) onLine(l);
+        return (stream.Length, text[(end + 1)..]);
+    }
+    catch (IOException)
+    {
+        return (position, pending); // journal en cours d'écriture : on réessaiera au prochain tour
     }
 }
 
@@ -191,6 +343,9 @@ int Release()
         throw new UserError("Les AirPods ne sont pas sur ce PC.");
 
     var (ok, _) = SendAndWait(ep, BluetoothAudio.Disconnect, s => s != HeadsetState.Connected);
+    // Le micro, s'il est activé, garderait les AirPods accrochés au PC (tests L3 et H9).
+    if (BluetoothAudio.ReleaseHandsFree(config.Mac!) is { } code && code != 0)
+        Console.WriteLine($"Relâche du micro refusée (code Windows {code}) : l'iPhone pourrait ne pas reprendre les AirPods.");
     Console.WriteLine(ok ? "AirPods rendus : l'iPhone va les reprendre." : "Les AirPods sont toujours connectés.");
     return ok ? 0 : 2;
 }

@@ -90,10 +90,10 @@ public class InvariantTests
                 if (e is Tick && after == SwitchState.OnWindows)
                     Assert.True(before is SwitchState.OnWindows or SwitchState.Releasing, where);
 
-                // 9. On ne coupe les haut-parleurs qu'en appelant les AirPods, et jamais deux fois de suite.
+                // 9. On ne coupe les haut-parleurs que pendant que les AirPods arrivent, et jamais deux fois de suite.
                 if (commands.Contains(MuteSpeakers))
                 {
-                    Assert.Contains(Reconnect, commands);
+                    Assert.Equal(SwitchState.Switching, after);
                     Assert.Null(mutedAt);
                     mutedAt = time.GetUtcNow();
                 }
@@ -104,11 +104,11 @@ public class InvariantTests
                 }
 
                 // 10. Le PC n'est jamais laissé muet : la coupure ne survit ni à un abandon, ni à une perte,
-                //     ni à une relâche, et ne dépasse jamais MaxMuteDuration.
+                //     ni à une relâche, et ne dépasse jamais MuteTimeout.
                 if (mutedAt is { } since)
                 {
                     Assert.True(after is SwitchState.Switching or SwitchState.OnWindows, where);
-                    Assert.True(time.GetUtcNow() - since < options.MaxMuteDuration, where);
+                    Assert.True(time.GetUtcNow() - since < options.MuteTimeout, where);
                 }
             }
         }
