@@ -24,7 +24,7 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ToolStripMenuItem _auto = new("Bascule automatique") { CheckOnClick = true };
     private readonly ToolStripMenuItem _startup = new("Démarrer avec Windows") { CheckOnClick = true };
     private readonly Control _ui = new(); // sert à revenir sur le thread de l'interface depuis l'hôte
-    private readonly StartupEntry _startupEntry = new(Application.ExecutablePath);
+    private readonly StartupShortcut _startupShortcut = StartupShortcut.ForCurrentUser(Application.ExecutablePath);
     private readonly Adapters? _adapters;
 
     public TrayApp()
@@ -37,6 +37,7 @@ internal sealed class TrayApp : ApplicationContext
 
         // Les objets COM de Windows doivent être créés hors du thread de l'interface (STA) :
         // l'hôte les utilisera depuis ses propres threads (MTA). Task.Run s'en charge.
+        FileLog.Write("Configuration lue, branchement aux services de Windows…");
         try
         {
             _adapters = Task.Run(() => Adapters.CreateAsync(config)).GetAwaiter().GetResult();
@@ -93,7 +94,7 @@ internal sealed class TrayApp : ApplicationContext
             new ToolStripSeparator(),
             new ToolStripMenuItem("Quitter", null, (_, _) => ExitThread()),
         ]);
-        _menu.Opening += (_, _) => _startup.Checked = _startupEntry.IsEnabled;
+        _menu.Opening += (_, _) => _startup.Checked = _startupShortcut.IsEnabled;
 
         _icon.ContextMenuStrip = _menu;
         _icon.Icon = TrayIcons.For(SwitchState.Away, autoSwitch: false);
@@ -156,15 +157,20 @@ internal sealed class TrayApp : ApplicationContext
         Render(_adapters.Host.State);
     }
 
+    // Erreurs attendues en touchant au dossier Démarrage ou au registre : droits, disque, ou COM (le raccourci).
+    private static bool IsStartupFailure(Exception e) =>
+        e is UnauthorizedAccessException or System.Security.SecurityException or IOException
+          or System.Runtime.InteropServices.COMException or InvalidCastException;
+
     private void SetStartup(bool enabled)
     {
         try
         {
-            _startupEntry.Set(enabled);
+            _startupShortcut.Set(enabled);
         }
-        catch (Exception e) when (e is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+        catch (Exception e) when (IsStartupFailure(e))
         {
-            _startup.Checked = _startupEntry.IsEnabled;
+            _startup.Checked = _startupShortcut.IsEnabled;
             _icon.ShowBalloonTip(5_000, "ACAW", $"Réglage impossible : {e.Message}", ToolTipIcon.Warning);
         }
     }

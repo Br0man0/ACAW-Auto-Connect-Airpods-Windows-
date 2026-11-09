@@ -117,7 +117,7 @@ jamais couper les haut-parleurs). On peut les modifier à la main (format `"00:0
 | les AirPods ne viennent pas | boîtier fermé ou hors de portée ? `acaw status` dit s'ils sont éveillés ; sinon voir le journal |
 | ils viennent pour une simple notification | augmenter `SoundConfirmDelay` dans `config.json` |
 | ils repartent trop vite après une pause | augmenter `PauseDelay` |
-| ACAW ne démarre pas avec Windows | ouvrir le menu de l'icône : si « Démarrer avec Windows » est décoché, le cocher. Vérifier aussi qu'ACAW est « Activé » dans Paramètres → Applications → Démarrage |
+| ACAW ne démarre pas avec Windows | ouvrir le menu de l'icône : si « Démarrer avec Windows » est décoché, le cocher. Vérifier que `ACAW.lnk` est dans le dossier Démarrage (Win + R, `shell:startup`) et qu'ACAW est « Activé » dans Paramètres → Applications → Démarrage. Le journal commence chaque lancement par une ligne « Lancement de … (Windows démarré il y a …) » ; si le journal lui-même est en panne, la raison est dans `%TEMP%\acaw-journal-en-panne.log` |
 | le PC est resté muet (ne devrait jamais arriver) | relancer `acaw-tray.exe` : il rétablit au démarrage le son qu'il avait coupé ; sinon rétablir le son à la main et envoyer le journal |
 | `Windows refuse l'accès au driver… (E_NOINTERFACE)` | supprimer les AirPods des paramètres Bluetooth, les ré-appairer, relancer `acaw setup` |
 | `Éveillés : non détectés` alors qu'ils sont portés | relancer `status` ; vérifier que le modèle dans `config.json` correspond à celui affiché par `setup` |

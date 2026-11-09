@@ -21,3 +21,6 @@ IAudioSessionEnumerator
 IAudioSessionControl2
 IAudioMeterInformation
 IAudioEndpointVolume
+ShellLink
+IShellLinkW
+IPersistFile

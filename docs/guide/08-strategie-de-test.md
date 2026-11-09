@@ -7,7 +7,7 @@
 
 ```
              /  Recette manuelle  \        quelques scénarios, avec les vrais AirPods et l'iPhone
-            /    Tests Windows      \      9 tests fumée (vraies API, sans rien modifier) + 8 tests du registre
+            /    Tests Windows      \      9 tests fumée (vraies API, sans rien modifier) + 8 tests du démarrage
            /  Tests d'intégration    \     21 tests, l'hôte entier avec de faux Windows
           /  Invariants (aléatoire)   \    des milliers de séquences générées
          /     Tests unitaires         \   machine, tracker, décodeur, configuration
@@ -173,12 +173,17 @@ quand on casse le code ? ».
 |---|---|---|
 | connexion radio réelle | il faut de vrais AirPods et un iPhone | recette |
 | interface (icône, menu) | WinForms se teste mal automatiquement | recette |
-| lancement réel à l'ouverture de session | il faut fermer puis rouvrir la session | recette (ligne 13). Les valeurs écrites dans le registre, elles, sont testées automatiquement dans une clé temporaire (`StartupEntryTests`), sans toucher au vrai démarrage |
+| lancement réel à l'ouverture de session | il faut fermer puis rouvrir la session | recette (ligne 13). Le raccourci et le registre, eux, sont testés automatiquement dans un dossier et une clé temporaires (`StartupShortcutTests`), sans toucher au vrai démarrage. **Leçon du 9 novembre 2026 :** ces tests prouvent que le code écrit ce qu'il doit, pas que Windows s'en sert, ni que l'écriture arrive au bon endroit (voir le piège MSIX du guide 07). Seule la recette le prouve |
 
 ## Recette manuelle
 
 À faire à la fin de chaque phase, avec `acaw-tray.exe` lancé et les AirPods dans les oreilles. Le journal
 (menu « Ouvrir le journal ») sert de preuve pour chaque ligne.
+
+> **Lancer ACAW et `acaw setup` depuis un terminal Windows ordinaire** (ou par le raccourci du menu
+> Démarrer), jamais depuis un outil empaqueté comme l'application Claude : ses écritures dans `AppData` et
+> dans le registre seraient redirigées ailleurs, et la recette testerait une autre configuration que la
+> vraie (voir le guide 07, « Démarrer avec Windows »).
 
 | # | Geste | Attendu | ✓ |
 |---|---|---|---|
@@ -195,6 +200,6 @@ quand on casse le code ? ».
 | 10b | AirPods sortis mais posés loin (autre pièce), lancer une vidéo | au pire 6 s de silence, puis le son revient sur les haut-parleurs | |
 | 11 | mettre le PC en veille 1 min, réveiller, lancer une vidéo | la bascule marche encore | à faire |
 | 12 | couper puis rallumer le Bluetooth du PC | « Écoute BLE arrêtée » dans le journal, puis la bascule remarche | |
-| 13 | cocher « Démarrer avec Windows », fermer la session, la rouvrir | ACAW démarre tout seul, sans console ; il est « Activé » dans Paramètres → Applications → Démarrage | |
+| 13 | cocher « Démarrer avec Windows », fermer la session, la rouvrir | ACAW démarre tout seul, sans console. Le journal montre « Lancement de … (Windows démarré il y a …) » **puis « ACAW démarré »** : la première ligne seule ne suffit pas | |
 | 13b | le désactiver dans Paramètres → Applications → Démarrage, puis ouvrir le menu de l'icône | la case « Démarrer avec Windows » est décochée | |
 | 14 | lancer `acaw-tray.exe` une seconde fois | rien (une seule icône) | |

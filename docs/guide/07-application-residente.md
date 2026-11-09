@@ -122,28 +122,39 @@ vers ce thread.
 
 ## Démarrer avec Windows
 
-Le menu « Démarrer avec Windows » écrit **deux** valeurs `ACAW` dans `HKCU`, la partie du registre
-propre à l'utilisateur (aucun droit administrateur n'est nécessaire) :
+Le menu « Démarrer avec Windows » crée un **raccourci** `ACAW.lnk` dans le dossier Démarrage de
+l'utilisateur (`shell:startup`, c'est-à-dire
+`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`). Windows ouvre tout ce qui s'y trouve à
+l'ouverture de session. Aucun droit administrateur n'est nécessaire, et on peut voir ou supprimer le
+raccourci à la main (Win + R, `shell:startup`).
 
-| Clé | Contenu | Rôle |
-|---|---|---|
-| `Software\Microsoft\Windows\CurrentVersion\Run` | le chemin de `acaw-tray.exe` | **quoi** lancer à l'ouverture de session |
-| `Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run` | 12 octets, le premier vaut `02` (activé) ou `03` (désactivé) | **si** Windows a le droit de le lancer : c'est l'interrupteur de la page Paramètres → Applications → Démarrage |
+Le code est dans `src/Acaw.Windows/StartupShortcut.cs` :
+- la case n'est cochée que si le raccourci existe, **pointe vers le programme lancé** (après un
+  déplacement, l'ancien raccourci lancerait l'ancienne copie) et n'est pas désactivé dans
+  **Paramètres → Applications → Démarrage** ;
+- cocher la case crée le raccourci et lève une éventuelle désactivation dans les Paramètres : c'est une
+  demande explicite ;
+- décocher la case supprime le raccourci, et rien d'autre.
 
-> **Pourquoi deux ?** Au début, ACAW n'écrivait que la première. Le 4 novembre 2026, on a constaté dans le
-> journal de Windows (`Microsoft-Windows-Shell-Core/Operational`, événements 9705 à 9708) que la commande
-> n'était **jamais lancée**, cinq démarrages de suite : Windows ne lançait que les programmes marqués
-> `02` dans la seconde clé, et ACAW n'y figurait pas. La case du menu, elle, restait cochée.
+Le raccourci est écrit avec l'interface COM `IShellLinkW` de Windows (générée par CsWin32, comme le reste
+de l'interop), puis enregistré avec `IPersistFile.Save`.
 
-Le code est dans `src/Acaw.Windows/StartupEntry.cs` :
-- la case n'est cochée que si **les deux** valeurs disent oui, et si le chemin est bien celui du programme
-  lancé (sinon, après un déplacement, Windows lancerait l'ancien) ;
-- cocher la case réécrit les deux valeurs : c'est une demande explicite, qui prime sur une ancienne
-  désactivation dans les Paramètres ;
-- décocher la case supprime les deux valeurs, et rien d'autre.
-
-Si tu désactives ACAW dans **Paramètres → Applications → Démarrage**, la case du menu se décoche toute
-seule : les deux disent la même chose.
+> **Et la clé Run ?** Les premières versions écrivaient une valeur dans
+> `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, la méthode la plus courante. Elle marche aussi :
+> Windows l'a lancée le 9 novembre 2026. Le raccourci a été gardé parce qu'il est visible et se supprime à
+> la main.
+>
+> **Le piège qui a fait croire le contraire (du 3 au 9 novembre 2026).** Les commandes lancées depuis
+> l'application de bureau Claude (assistant de développement) tournent dans le contexte d'une
+> **application empaquetée (MSIX)**. Windows redirige alors leurs écritures dans `AppData` et dans `HKCU`
+> vers un dossier privé (`%LOCALAPPDATA%\Packages\Claude_…\LocalCache` et un registre privé). La
+> configuration créée par `acaw setup`, le journal et la valeur Run écrits depuis Claude n'existaient
+> donc que là. Windows, lui, ne voyait rien à lancer, et l'ACAW lancé à l'ouverture de session ne
+> trouvait pas de configuration (« Aucun AirPods configuré »). Deux fausses pistes ont été suivies avant
+> de comprendre : « il manque l'autorisation `StartupApproved` », puis « Windows 25H2 ignore la clé Run ».
+>
+> **À retenir :** tout ce qui doit toucher le vrai profil (configuration, démarrage, recette) se lance
+> depuis un terminal Windows ordinaire, pas depuis un outil empaqueté.
 
 ## Le journal
 

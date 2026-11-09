@@ -216,7 +216,8 @@ public sealed class AcawHost : IDisposable
         }
         catch (Exception e)
         {
-            Log($"Écoute BLE impossible ({e.Message}), nouvel essai dans 10 s");
+            // Le type et le code d'erreur aussi : certaines erreurs de Windows arrivent avec un message vide.
+            Log($"Écoute BLE impossible ({e.GetType().Name} 0x{e.HResult:X8} : {e.Message}), nouvel essai dans 10 s");
             _radarRetryAt = _time.GetUtcNow() + RadarRetryDelay;
         }
     }
