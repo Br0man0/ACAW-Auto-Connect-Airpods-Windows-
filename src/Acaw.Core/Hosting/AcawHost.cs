@@ -41,6 +41,7 @@ public sealed class AcawHost : IDisposable
     private readonly ISoundMeter _meter;
     private readonly ISpeakers _speakers;
     private readonly IAirPodsRadar _radar;
+    private readonly IRadioLink? _link;     // facultatif : sans lui, la coupure du son a une limite fixe (R7)
     private readonly TimeProvider _time;
     private readonly Action<string> _log;
     private readonly SwitchStateMachine _machine;
@@ -50,6 +51,8 @@ public sealed class AcawHost : IDisposable
     private ITimer? _heartbeat;
     private Task? _loop;                     // traitement de la file en arrière-plan
     private bool _connected;                 // dernier état du casque transmis à la machine
+    private LinkState _linkState;            // dernier état de la liaison radio transmis à la machine
+    private bool _linkReadFailing;           // lecture de la liaison en échec : noté une seule fois au journal
     private bool _profileChanging;           // bascule du profil mains libres en cours : coupures ignorées
     private DateTimeOffset? _profileSettleAt; // fin de la bascule : relecture du casque
     private DateTimeOffset? _radarRetryAt;   // redémarrage programmé de l'écoute BLE
@@ -60,8 +63,10 @@ public sealed class AcawHost : IDisposable
     private bool _speakersRestored;          // rétablissement de sécurité fait au premier démarrage
 
     public AcawHost(AcawConfig config, IHeadsetPort headset, IMediaPort media, ISoundMeter meter,
-                    ISpeakers speakers, IAirPodsRadar radar, TimeProvider time, Action<string> log)
+                    ISpeakers speakers, IAirPodsRadar radar, TimeProvider time, Action<string> log,
+                    IRadioLink? link = null)
     {
+        _link = link;
         _options = config.Switching;
         _autoSwitch = config.AutoSwitch;
         (_headset, _media, _meter, _speakers, _radar, _time, _log) = (headset, media, meter, speakers, radar, time, log);
@@ -87,6 +92,7 @@ public sealed class AcawHost : IDisposable
         _media.PlayingChanged += OnMediaChanged;
         _radar.AirPodsSeen += OnAirPodsSeen;
         _radar.Stopped += OnRadarStopped;
+        if (_link is not null) _link.StateChanged += OnLinkChanged;
         Enqueue(new Sync());
         _heartbeat = _time.CreateTimer(_ => Enqueue(new Heartbeat()), null, HeartbeatInterval, HeartbeatInterval);
         if (background) _loop = Task.Run(RunAsync);
@@ -152,6 +158,7 @@ public sealed class AcawHost : IDisposable
         _media.PlayingChanged -= OnMediaChanged;
         _radar.AirPodsSeen -= OnAirPodsSeen;
         _radar.Stopped -= OnRadarStopped;
+        if (_link is not null) _link.StateChanged -= OnLinkChanged;
         _radar.Stop();
     }
 
@@ -198,6 +205,9 @@ public sealed class AcawHost : IDisposable
             case HeadsetChanged(var state):
                 ApplyHeadsetState(state);
                 break;
+            case LinkChanged(var link):
+                ApplyLinkState(link);
+                break;
             case RadarStopped:
                 Log("Écoute BLE arrêtée, nouvel essai dans 10 s");
                 _radarRetryAt = _time.GetUtcNow() + RadarRetryDelay;
@@ -228,6 +238,7 @@ public sealed class AcawHost : IDisposable
     {
         _nextHeadsetCheck = _time.GetUtcNow() + HeadsetCheckInterval;
         ApplyHeadsetState(_headset.GetState());
+        if (_link is not null) ApplyLinkState(ReadLink());
     }
 
     // Le journal est fourni de l'extérieur : s'il échoue, on perd la ligne, jamais la boucle de l'hôte.
@@ -263,6 +274,37 @@ public sealed class AcawHost : IDisposable
         if (connected == _connected) return; // Windows peut répéter la même notification
         _connected = connected;
         Feed([connected ? new EndpointConnected() : new EndpointDisconnected()]);
+    }
+
+    // Un adaptateur qui échoue ne doit pas bloquer la relecture du casque : on se passe alors de la liaison.
+    // Relue toutes les 30 s : l'échec n'est noté qu'une fois, puis de nouveau après un retour à la normale.
+    private LinkState ReadLink()
+    {
+        try
+        {
+            var state = _link!.GetState();
+            _linkReadFailing = false;
+            return state;
+        }
+        catch (Exception e)
+        {
+            if (!_linkReadFailing) Log($"Liaison radio illisible ({e.GetType().Name} : {e.Message})");
+            _linkReadFailing = true;
+            return LinkState.Unknown;
+        }
+    }
+
+    // Seul un vrai changement atteint la machine (WinRT peut répéter la même notification).
+    private void ApplyLinkState(LinkState state)
+    {
+        if (state == _linkState) return;
+        _linkState = state;
+        Feed([state switch
+        {
+            LinkState.Up => new RadioLinkUp(),
+            LinkState.Down => new RadioLinkDown(),
+            _ => new RadioLinkUnknown(),
+        }]);
     }
 
     private void StartRadar()
@@ -328,6 +370,8 @@ public sealed class AcawHost : IDisposable
 
     private void OnRadarStopped() => Enqueue(new RadarStopped());
 
+    private void OnLinkChanged(LinkState state) => Enqueue(new LinkChanged(state));
+
     // Les AirPods émettent ~1 annonce par seconde, et l'écoute peut en recevoir plusieurs d'un coup :
     // une seule par seconde suffit à la machine pour savoir qu'ils sont éveillés.
     private void OnAirPodsSeen()
@@ -345,6 +389,7 @@ public sealed class AcawHost : IDisposable
     private sealed record Forward(SwitchEvent Event) : Input;
     private sealed record MediaChanged : Input;
     private sealed record HeadsetChanged(HeadsetState State) : Input;
+    private sealed record LinkChanged(LinkState State) : Input;
     private sealed record RadarStopped : Input;
     private sealed record SetAuto(bool On) : Input;
     private sealed record Sync : Input;

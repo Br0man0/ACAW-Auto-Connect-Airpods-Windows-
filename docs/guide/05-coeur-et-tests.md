@@ -77,7 +77,7 @@ le résultat. On les lance tous d'un coup :
 dotnet test
 ```
 
-Résultat attendu : `Réussi! - échec: 0, réussite: 149` pour le cœur (et 52 de plus pour les tests Windows : 10 tests fumée et 42 sans matériel, sur le démarrage avec Windows, les chemins de driver Bluetooth et le micro, la surveillance de `config.json`, le profil mains libres et le signal d'arrêt). Si un test échoue, la sortie dit lequel, ce qui
+Résultat attendu : `Réussi! - échec: 0, réussite: 170` pour le cœur (et 53 de plus pour les tests Windows : 11 tests fumée et 42 sans matériel, sur le démarrage avec Windows, les chemins de driver Bluetooth et le micro, la surveillance de `config.json`, le profil mains libres et le signal d'arrêt). Si un test échoue, la sortie dit lequel, ce qui
 était attendu et ce qui a été obtenu.
 
 Le projet utilise **xUnit** :
@@ -114,6 +114,7 @@ public void Scenario_de_l_ADR_video_mise_en_pause_puis_AirPods_rendus_apres_5_s(
 | `AppleAdvertisementParserTests.cs` | le décodage BLE, sur des trames reconstruites depuis les relevés des tests C1 et C3 |
 | `ConfigStoreTests.cs` | l'enregistrement puis la relecture de la configuration |
 | `AudioActivityTrackerTests.cs` | « est-ce que le PC joue ? » : médias, sons de jeu, notifications |
+| `SpeakerMuteRuleTests.cs` | la règle R7 : haut-parleurs coupés pendant l’arrivée des AirPods, et la bascule suivie (tes vraies mesures du test L rejouées) |
 | `AcawHostTests.cs` | l’hôte complet avec de faux ports : des situations réelles de bout en bout |
 | `InvariantTests.cs` | des milliers de séquences aléatoires et les règles qui doivent toujours tenir |
 

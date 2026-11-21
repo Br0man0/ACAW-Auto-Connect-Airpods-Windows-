@@ -63,6 +63,30 @@ public interface ISpeakers
     void Unmute();
 }
 
+/// <summary>
+/// La liaison radio (ACL) entre le PC et les AirPods : la première étape d'une connexion, avant la sortie
+/// audio. Établie en moins de 4 s quand les AirPods arrivent, jamais quand ils ne viendront pas (guide 4, test L).
+/// </summary>
+public enum LinkState
+{
+    /// <summary>Illisible (Bluetooth coupé, API indisponible) : ACAW se passe de cette information.</summary>
+    Unknown,
+
+    /// <summary>Établie : les AirPods sont sur ce PC, ou en train d'y venir.</summary>
+    Up,
+
+    /// <summary>Coupée.</summary>
+    Down,
+}
+
+/// <summary>La liaison radio avec les AirPods (règle R7, bascule suivie).</summary>
+public interface IRadioLink
+{
+    LinkState GetState();
+
+    event Action<LinkState>? StateChanged;
+}
+
 /// <summary>L'écoute BLE des AirPods.</summary>
 public interface IAirPodsRadar
 {

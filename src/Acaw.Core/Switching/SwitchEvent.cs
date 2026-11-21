@@ -30,6 +30,15 @@ public sealed record EndpointConnected : SwitchEvent;
 /// <summary>L'endpoint audio des AirPods n'est plus actif sur ce PC.</summary>
 public sealed record EndpointDisconnected : SwitchEvent;
 
+/// <summary>La liaison radio avec les AirPods s'est établie (ils arrivent, ou sont là).</summary>
+public sealed record RadioLinkUp : SwitchEvent;
+
+/// <summary>La liaison radio avec les AirPods est coupée.</summary>
+public sealed record RadioLinkDown : SwitchEvent;
+
+/// <summary>L'état de la liaison radio est devenu illisible : la machine revient à la limite fixe (MuteTimeout).</summary>
+public sealed record RadioLinkUnknown : SwitchEvent;
+
 /// <summary>Une annonce BLE des AirPods vient d'être reçue : ils sont éveillés.</summary>
 public sealed record AirPodsSeen : SwitchEvent;
 

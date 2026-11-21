@@ -55,15 +55,17 @@ Il n'y a rien à faire :
 - un jeu ou un appel Discord : les AirPods viennent si le son dure plus de 2 s, et repartent 30 s
   après la fin du son ;
 - pendant que les AirPods arrivent, **les haut-parleurs sont coupés** : le son ne sort pas dans la pièce.
-  La lecture continue (tu peux perdre 1 à 2 s du début). Si les AirPods ne viennent pas (posés trop
-  loin…), le son revient sur les haut-parleurs au bout de 20 s maximum.
+  La lecture continue (tu peux perdre 1 à 2 s du début). Tant que la liaison radio avec les AirPods est établie, ils
+  arrivent : les haut-parleurs restent coupés jusqu'à leur arrivée, même si elle prend 15 s (micro activé).
+  S'ils ne viennent pas (posés trop loin…), aucune liaison ne s'établit et le son revient sur les
+  haut-parleurs au bout de **6 s**.
 
 Et si les AirPods ne sont pas là ?
 
 | Situation | Ce qui se passe |
 |---|---|
 | boîtier fermé, ou AirPods hors de portée du Bluetooth | ACAW ne tente rien : le son sort normalement des haut-parleurs |
-| AirPods sortis mais injoignables (autre pièce, pris par un autre appareil qui refuse) | ACAW essaie ; au pire 20 s de silence, puis le son revient sur les haut-parleurs, et l'essai s'arrête au bout de 30 s |
+| AirPods sortis mais injoignables (autre pièce, pris par un autre appareil qui refuse) | ACAW essaie ; pas de liaison radio en 6 s : ACAW abandonne : le son revient sur les haut-parleurs, l'icône repasse au gris et « Amener sur ce PC » redevient possible |
 | Bluetooth du PC coupé, AirPods plus appairés | ACAW ne tente rien ou échoue proprement ; l'erreur est notée dans le journal |
 
 Dans aucun cas ACAW ne bloque la lecture ni ne s'arrête : il ne met en pause que si on lui demande de rendre
@@ -120,7 +122,9 @@ En développement, `dotnet run --project src/Acaw.Cli -- status` fait la même c
 l'[ADR-0003](../adr/0003-regles-de-bascule.md) : `PauseDelay` (5 s), `SilenceDelay` (30 s), `Cooldown`
 (5 s), `AwakeWindow` (30 s), `SwitchTimeout` (30 s), `SoundConfirmDelay` (2 s), `SilenceConfirmDelay`
 (2 s), `UnmuteDelay` (1 s), `MuteTimeout` (20 s : durée maximale de la coupure des haut-parleurs pendant
-l'arrivée des AirPods ; elle s'appelait `MaxMuteDuration` et valait 6 s, trop court, jusqu'à la v0.5.0), et `MuteWhileSwitching` (`true` ; `false` pour ne
+l'arrivée des AirPods ; elle s'appelait `MaxMuteDuration` et valait 6 s, trop court, jusqu'à la v0.5.0), `LinkTimeout` (6 s : sans liaison radio au bout de ce délai, les AirPods sont jugés injoignables et le son
+revient sur les haut-parleurs ; avec liaison, la coupure dure jusqu'à leur arrivée, et `MuteTimeout` ne sert
+plus que si la liaison est illisible), et `MuteWhileSwitching` (`true` ; `false` pour ne
 jamais couper les haut-parleurs). On peut les modifier à la main (format `"00:00:05"`) : **ACAW relit le
 fichier tout seul** une demi-seconde après l'enregistrement, sans qu'il faille le relancer.
 

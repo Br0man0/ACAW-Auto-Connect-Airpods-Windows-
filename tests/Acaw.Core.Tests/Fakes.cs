@@ -117,3 +117,20 @@ internal sealed class FakeRadar : IAirPodsRadar
         Stopped?.Invoke();
     }
 }
+
+internal sealed class FakeRadioLink : IRadioLink
+{
+    public LinkState State { get; set; } = LinkState.Down;
+    public bool FailOnRead { get; set; }
+
+    public event Action<LinkState>? StateChanged;
+
+    public LinkState GetState() => FailOnRead ? throw new InvalidOperationException("Bluetooth coupé") : State;
+
+    /// <summary>Simule Windows qui signale un nouvel état de la liaison.</summary>
+    public void Becomes(LinkState state)
+    {
+        State = state;
+        StateChanged?.Invoke(state);
+    }
+}

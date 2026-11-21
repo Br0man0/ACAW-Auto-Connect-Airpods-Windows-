@@ -18,13 +18,14 @@ public sealed class AcawHostTests : IDisposable
     private readonly FakeMeter _meter = new();
     private readonly FakeSpeakers _speakers = new();
     private readonly FakeRadar _radar = new();
+    private readonly FakeRadioLink _link = new();
     private readonly List<string> _log = [];
     private AcawHost _host = null!;
 
-    private void Start(bool autoSwitch = true)
+    private void Start(bool autoSwitch = true, bool withLink = false)
     {
         _host = new AcawHost(new AcawConfig { Mac = "A1:B2:C3:D4:E5:F6", AutoSwitch = autoSwitch },
-                             _headset, _media, _meter, _speakers, _radar, _time, _log.Add);
+                             _headset, _media, _meter, _speakers, _radar, _time, _log.Add, withLink ? _link : null);
         _host.Start(background: false);
         _host.ProcessPending();
     }
@@ -84,6 +85,96 @@ public sealed class AcawHostTests : IDisposable
         Run();
         Wait(1.25);
         Assert.False(_speakers.Muted);
+    }
+
+    // ── Bascule suivie : la liaison radio relayée par l'hôte ──
+
+    [Fact]
+    public void Suivie_bascule_lente_de_25_s_aucune_fuite_grace_a_la_liaison()
+    {
+        Start(withLink: true);
+        AirPodsAwake();
+        _media.Plays(true);
+        Run();
+        Wait(0.5);
+        _link.Becomes(LinkState.Up);
+        Run();
+
+        Wait(24);
+        Assert.True(_speakers.Muted); // au-delà des 20 s : la liaison dit qu'ils arrivent
+
+        _headset.Becomes(HeadsetState.Connected);
+        Run();
+        Wait(1.25);
+        Assert.False(_speakers.Muted);
+        Assert.Contains("Événement RadioLinkUp (Switching → Switching)", _log); // trace pour les mesures
+    }
+
+    [Fact]
+    public void Suivie_AirPods_injoignables_son_rendu_a_6_s()
+    {
+        Start(withLink: true);
+        AirPodsAwake();
+        _media.Plays(true);
+        Run();
+
+        Wait(5.75);
+        Assert.True(_speakers.Muted);
+        Wait(0.5);
+        Assert.False(_speakers.Muted);
+    }
+
+    [Fact]
+    public void Suivie_liaison_lue_au_demarrage_et_notifications_repetees_ignorees()
+    {
+        _link.State = LinkState.Up;
+        Start(withLink: true);
+        Assert.Contains("Événement RadioLinkUp (Away → Away)", _log);
+
+        _link.Becomes(LinkState.Up); // Windows répète
+        Run();
+        Assert.Single(_log, line => line.Contains("RadioLinkUp", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Suivie_liaison_illisible_l_hote_continue_avec_la_limite_fixe()
+    {
+        _link.FailOnRead = true;
+        Start(withLink: true);
+        AirPodsAwake();
+        _media.Plays(true);
+        Run();
+
+        Assert.Contains(_log, line => line.StartsWith("Liaison radio illisible", StringComparison.Ordinal));
+        Wait(19.75);
+        Assert.True(_speakers.Muted); // sans liaison lisible : comportement d'avant, 20 s
+        Wait(0.5);
+        Assert.False(_speakers.Muted);
+    }
+
+    [Fact]
+    public void Suivie_liaison_illisible_notee_une_seule_fois_malgre_les_relectures()
+    {
+        _link.FailOnRead = true;
+        Start(withLink: true);
+        Wait(95); // trois relectures de sécurité (toutes les 30 s)
+        Assert.Single(_log, line => line.StartsWith("Liaison radio illisible", StringComparison.Ordinal));
+
+        _link.FailOnRead = false; // retour à la normale…
+        Wait(30);
+        _link.FailOnRead = true;  // … puis nouvelle panne : de nouveau notée
+        Wait(30);
+        Assert.Equal(2, _log.Count(line => line.StartsWith("Liaison radio illisible", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void Suivie_l_hote_arrete_n_ecoute_plus_la_liaison()
+    {
+        Start(withLink: true);
+        _host.Dispose();
+        _link.Becomes(LinkState.Up);
+
+        Assert.Equal(0, _host.ProcessPending());
     }
 
     [Fact]

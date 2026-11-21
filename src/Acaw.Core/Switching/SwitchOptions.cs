@@ -37,4 +37,11 @@ public sealed record SwitchOptions
     /// existants, est ignorée à la lecture, si bien que tout le monde passe à la nouvelle valeur.
     /// </summary>
     public TimeSpan MuteTimeout { get; init; } = TimeSpan.FromSeconds(20);
+
+    /// <summary>
+    /// Bascule suivie : sans liaison radio au bout de ce délai, les AirPods ne viendront pas (boîtier fermé, hors de
+    /// portée) et le son revient sur les haut-parleurs. Mesuré : liaison toujours établie en moins de 3,94 s
+    /// (17 bascules), jamais quand les AirPods sont injoignables (guide 4, test L, 2026-11-09).
+    /// </summary>
+    public TimeSpan LinkTimeout { get; init; } = TimeSpan.FromSeconds(6);
 }

@@ -90,4 +90,13 @@ public class HandsFreeProfileTests
     {
         _ = HandsFreeProfile.IsEnabled(Mac); // vraie API CfgMgr : ne doit pas lever d'exception
     }
+
+    [Fact]
+    [Trait("Categorie", "Windows")]
+    public void La_liaison_radio_d_un_appareil_jamais_appaire_se_lit_coupee_sans_erreur()
+    {
+        using var link = new WindowsRadioLink("00:00:00:00:00:01"); // vraie API WinRT, appareil jamais appairé
+        // WinRT ne dit pas « introuvable » : il crée l'appareil, liaison coupée (constaté le 2026-11-09).
+        Assert.Equal(Acaw.Core.Hosting.LinkState.Down, link.GetState());
+    }
 }

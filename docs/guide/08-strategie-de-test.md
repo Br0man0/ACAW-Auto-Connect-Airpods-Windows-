@@ -272,3 +272,14 @@ Avec la Release téléchargée sur GitHub, depuis l'Explorateur (jamais depuis C
 | H7 | micro des AirPods **coché** (bascules lentes), AirPods sur l'iPhone : lancer une vidéo, et recommencer 5 fois | **aucun son sur les haut-parleurs** pendant la bascule, même quand elle dure plus de 10 s ; journal : `UnmuteSpeakers` toujours **après** `EndpointConnected` | ✅ |
 | H9 | micro des AirPods **coché**, `acaw watch` lancé (journal attendu : « Micro des AirPods relâché aussi ») : vidéo sur le PC, attendre l'arrivée, pause, attendre la relâche (5 s) ; 3 fois | l'iPhone reprend les AirPods comme micro décoché ; `acaw watch` : `micro (HFP)` passe à `Disconnected` juste après `sortie audio`, puis la liaison tombe ~3 s plus tard (et non 11 à 21 s) | ✅ |
 | H8 | AirPods sur l'iPhone, rien ne joue : menu → « Amener sur ce PC », puis lancer une vidéo tout de suite | aucun son sur les haut-parleurs ; journal : `MuteSpeakers` juste après `PlaybackStarted` | ✅ |
+
+### Recette de la bascule suivie (v0.6.0)
+
+Lancer `acaw watch` à côté (guide 6) : le journal doit montrer `Événement RadioLinkUp` avant `EndpointConnected`.
+
+| # | Geste | Attendu | ✓ |
+|---|---|---|---|
+| S1 | micro retiré, AirPods sur l'iPhone : lancer une vidéo, pause, attendre la relâche ; 5 fois | comme avant (~2 s) ; aucun son sur les haut-parleurs ; journal : `RadioLinkUp` puis `EndpointConnected` | ✅ (2026-11-21 : liaison 0,4 à 1,2 s, son 1,2 à 2,1 s) |
+| S2 | micro **coché** (bascules de 10 à 15 s) : pareil, 5 fois | **aucun** son sur les haut-parleurs, à aucun moment ; `UnmuteSpeakers` toujours après `EndpointConnected` | ✅ (2026-11-21 : son à 9 à 14 s, aucune fuite, aucune coupure de liaison) |
+| S3 | AirPods **dans le boîtier fermé** : menu → « Amener sur ce PC », puis lancer une vidéo tout de suite | le son sort des haut-parleurs au bout de **~6 s** (et non 20 s) ; journal : `Délai écoulé` + `UnmuteSpeakers` ~6 s après `Reconnect` | ✅ (2026-11-21 : son rendu à 6,0–6,2 s ; « Rendre » et « Amener » immédiats ; depuis, la bascule est abandonnée à 6 s : icône grise) |
+| S4 | AirPods portés puis rangés dans le boîtier fermé (moins de 30 s avant) : lancer une vidéo | idem S3 : son sur les haut-parleurs au bout de ~6 s | ✅ (2026-11-21 : AirPods enlevés → pause de la vidéo, règle R6, comportement voulu) |

@@ -35,6 +35,69 @@ public class SwitchStateMachineTests
         Assert.Equal(SwitchState.OnWindows, _machine.State);
     }
 
+    // ── Recette S3 du 2026-11-21 : « Amener sur ce PC » boîtier fermé, puis « Rendre » pendant l'essai ──
+
+    [Fact]
+    public void Relache_pendant_un_essai_de_connexion_retour_direct_et_Amener_marche_aussitot()
+    {
+        Send(new RadioLinkDown());
+        Send(new TakeRequested());
+        Send(new RadioLinkUp());     // ils arrivent…
+        Send(new PlaybackStarted());
+        _time.Advance(TimeSpan.FromSeconds(2));
+
+        Assert.Equal([PauseMedia, Disconnect], Send(new ReleaseRequested()));
+        Assert.Equal(SwitchState.Away, _machine.State);              // avant : coincé 30 s en Releasing
+        Assert.Equal([Reconnect], Send(new TakeRequested()));        // avant : ignoré
+    }
+
+    [Fact]
+    public void Amener_abandonne_faute_de_liaison_AirPods_arrives_en_retard_rendus_apres_le_silence()
+    {
+        Send(new RadioLinkDown());
+        Send(new TakeRequested());                      // « Amener sur ce PC » : gardés tant qu'on ne lit rien…
+        Assert.Equal([Disconnect], After(6.1));         // … mais abandonné : ils ne viennent pas
+        Send(new EndpointConnected());                  // ils arrivent quand même, plus tard
+
+        Assert.Empty(After(29.9));
+        Assert.Equal([Disconnect], After(0.2));         // la demande ne compte plus : rendus après 30 s de silence
+    }
+
+    [Fact]
+    public void Relache_non_confirmee_mais_liaison_coupee_les_AirPods_ne_sont_plus_sur_le_PC()
+    {
+        PlayingOnWindows();
+        Send(new RadioLinkUp());
+        Send(new ReleaseRequested());
+        _time.Advance(TimeSpan.FromSeconds(3));
+        Send(new RadioLinkDown());   // la sortie audio n'a rien signalé, mais la liaison est coupée
+
+        After(27.1);
+        Assert.Equal(SwitchState.Away, _machine.State); // avant : OnWindows, à tort
+    }
+
+    [Fact]
+    public void Relache_non_confirmee_liaison_coupee_et_reprise_demandee_les_AirPods_sont_rappeles()
+    {
+        PlayingOnWindows();
+        Send(new RadioLinkDown());
+        Send(new ReleaseRequested());
+        Send(new TakeRequested());   // « Amener sur ce PC » pendant la relâche
+
+        Assert.Equal([Reconnect], After(30.1));
+        Assert.Equal(SwitchState.Switching, _machine.State);
+    }
+
+    [Fact]
+    public void Relache_non_confirmee_liaison_inconnue_comportement_d_avant()
+    {
+        PlayingOnWindows();
+        Send(new ReleaseRequested());
+
+        After(30.1);
+        Assert.Equal(SwitchState.OnWindows, _machine.State); // sans liaison lisible : on les croit encore là
+    }
+
     [Fact]
     public void R1_Lecture_avec_AirPods_eveilles_les_prend()
     {

@@ -19,6 +19,7 @@ public class InvariantTests
     [
         new PlaybackStarted(), new PlaybackPaused(), new SilenceDetected(), new ReleaseRequested(),
         new TakeRequested(), new EndpointConnected(), new EndpointDisconnected(), new AirPodsSeen(), new Tick(),
+        new RadioLinkUp(), new RadioLinkDown(), new RadioLinkUnknown(),
     ];
 
     public static TheoryData<int> Seeds() => [.. Enumerable.Range(0, 10).Select(i => i * 7919)];
@@ -37,6 +38,7 @@ public class InvariantTests
             DateTimeOffset? lastSeen = null;
             DateTimeOffset? lostAt = null;
             DateTimeOffset? mutedAt = null; // haut-parleurs coupés depuis…
+            bool linkEverKnown = false;     // la liaison radio a été lisible au moins une fois
 
             for (int step = 0; step < StepsPerSequence; step++)
             {
@@ -48,6 +50,7 @@ public class InvariantTests
                 string where = $"graine {seed}, étape {step} : {before} --{e.GetType().Name}--> {after} [{string.Join(", ", commands)}]";
 
                 if (e is AirPodsSeen) lastSeen = time.GetUtcNow();
+                if (e is RadioLinkUp or RadioLinkDown) linkEverKnown = true;
                 if (after == SwitchState.Lost && before != SwitchState.Lost) lostAt = time.GetUtcNow();
 
                 // 1. Une annonce BLE ne déclenche rien, sauf le rétablissement du son déjà dû (R7) :
@@ -55,11 +58,21 @@ public class InvariantTests
                 if (e is AirPodsSeen)
                     Assert.True(commands.All(c => c == UnmuteSpeakers) && before == after, where);
 
+                // 1b. La liaison radio ne fait qu'une chose : quand elle se perd pendant une bascule, l'abandonner
+                //     (Switching → Away, Disconnect) ; sinon, au plus rendre le son déjà dû (bascule suivie).
+                if (e is RadioLinkUp or RadioLinkDown or RadioLinkUnknown)
+                {
+                    Assert.True(commands.All(c => c is UnmuteSpeakers or Disconnect), where);
+                    Assert.True(before == after || (e is RadioLinkDown && before == SwitchState.Switching && after == SwitchState.Away), where);
+                    Assert.Equal(before != after, commands.Contains(Disconnect));
+                }
+
                 // 2. Reconnect seulement en réponse à une lecture, une demande, ou la fin d'une relâche,
                 //    et toujours en passant à Switching.
                 if (commands.Contains(Reconnect))
                 {
-                    Assert.True(e is PlaybackStarted or TakeRequested or EndpointDisconnected, where);
+                    Assert.True(e is PlaybackStarted or TakeRequested or EndpointDisconnected
+                                || (e is Tick && before == SwitchState.Releasing), where); // relâche finie, liaison coupée
                     Assert.Equal(SwitchState.Switching, after);
                 }
 
@@ -71,11 +84,12 @@ public class InvariantTests
                 if (e is PlaybackStarted && before == SwitchState.Lost && commands.Contains(Reconnect))
                     Assert.True(time.GetUtcNow() - lostAt >= options.Cooldown, where);
 
-                // 5. Disconnect seulement depuis OnWindows ou Switching, et toujours en passant à Releasing.
+                // 5. Disconnect seulement depuis OnWindows (on attend alors la déconnexion : Releasing) ou Switching
+                //    (les AirPods ne sont pas encore là : rien à attendre, retour direct à Away).
                 if (commands.Contains(Disconnect))
                 {
                     Assert.True(before is SwitchState.OnWindows or SwitchState.Switching, where);
-                    Assert.Equal(SwitchState.Releasing, after);
+                    Assert.Equal(before == SwitchState.Switching ? SwitchState.Away : SwitchState.Releasing, after);
                 }
 
                 // 6. PauseMedia seulement quand le PC rend les AirPods (R4) ou les perd (R6).
@@ -104,11 +118,12 @@ public class InvariantTests
                 }
 
                 // 10. Le PC n'est jamais laissé muet : la coupure ne survit ni à un abandon, ni à une perte,
-                //     ni à une relâche, et ne dépasse jamais MuteTimeout.
+                //     ni à une relâche, ne dépasse jamais SwitchTimeout, et jamais MuteTimeout sans liaison lisible.
                 if (mutedAt is { } since)
                 {
                     Assert.True(after is SwitchState.Switching or SwitchState.OnWindows, where);
-                    Assert.True(time.GetUtcNow() - since < options.MuteTimeout, where);
+                    Assert.True(time.GetUtcNow() - since < options.SwitchTimeout, where);
+                    if (!linkEverKnown) Assert.True(time.GetUtcNow() - since < options.MuteTimeout, where);
                 }
             }
         }

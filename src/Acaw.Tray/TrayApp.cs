@@ -379,9 +379,10 @@ internal sealed class TrayApp : ApplicationContext
             var media = await MediaSessions.CreateAsync();
             var radar = new AirPodsRadar(config.ModelNumber!.Value);
             var speakers = new SpeakerMute();
+            var link = new WindowsRadioLink(config.Mac!); // bascule suivie (R7) : lu par l'hôte à son démarrage
             var host = new AcawHost(config, headset, media, new AudioMeter(), speakers, radar,
-                                    TimeProvider.System, FileLog.Write);
-            return new Adapters(host, speakers, [host, radar, media, headset]);
+                                    TimeProvider.System, FileLog.Write, link);
+            return new Adapters(host, speakers, [host, radar, media, headset, link]);
         }
 
         public void Start() => Host.Start();

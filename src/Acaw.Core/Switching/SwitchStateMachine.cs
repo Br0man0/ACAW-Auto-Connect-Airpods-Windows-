@@ -20,6 +20,10 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
     private bool _muted;                   // haut-parleurs coupés par nous (R7)
     private DateTimeOffset _mutedAt;
     private DateTimeOffset? _unmuteAt;     // AirPods arrivés : rétablissement programmé
+    private bool? _link;                   // liaison radio : établie, coupée, ou null si illisible (bascule suivie)
+    private DateTimeOffset _linkClock;     // depuis quand on attend la liaison (début de bascule, ou sa coupure)
+    private bool _linkCameUp;              // la liaison s'est établie pendant cette bascule
+    private bool _linkLost;                // … puis s'est coupée : la bascule a échoué
 
     public SwitchState State { get; private set; } = SwitchState.Away;
 
@@ -35,6 +39,9 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
             EndpointConnected => OnConnected(),
             EndpointDisconnected => OnDisconnected(),
             AirPodsSeen => OnAirPodsSeen(),
+            RadioLinkUp => OnLink(true),
+            RadioLinkDown => OnLink(false),
+            RadioLinkUnknown => OnLink(null),
             Tick => OnTick(),
             _ => None,
         };
@@ -96,6 +103,17 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
             ? new[] { SwitchCommand.PauseMedia, SwitchCommand.Disconnect }
             : [SwitchCommand.Disconnect];
         _held = false;
+        if (State == SwitchState.Switching)
+        {
+            // Les AirPods ne sont pas encore là : il n'y a aucune déconnexion à attendre. Avant (recette S3 du
+            // 2026-11-21), la machine restait 30 s en Releasing, ignorait « Amener sur ce PC », puis se croyait
+            // à tort sur le PC. Disconnect annule l'essai ; s'ils arrivent quand même, ce sera une connexion non
+            // demandée, relâchée comme les autres.
+            State = SwitchState.Away;
+            _releaseAt = null;
+            _retakeAfterRelease = false;
+            return commands;
+        }
         StartReleasing();
         return commands;
     }
@@ -157,8 +175,17 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
     {
         switch (State)
         {
+            case SwitchState.Switching when LinkGivenUp:
+                return AbandonSwitch(); // pas de liaison à temps : ils ne viendront pas
             case SwitchState.Switching when Now >= _waitUntil:
                 State = SwitchState.Away; // connexion trop longue : on abandonne
+                return None;
+            case SwitchState.Releasing when Now >= _waitUntil && _link == false:
+                // Déconnexion non confirmée par la sortie audio, mais la liaison radio est coupée : les AirPods
+                // ne sont certainement plus sur le PC.
+                State = SwitchState.Away;
+                if (_retakeAfterRelease && (AirPodsAwake || _held)) return StartSwitching();
+                _retakeAfterRelease = false;
                 return None;
             case SwitchState.Releasing when Now >= _waitUntil:
                 // Déconnexion non confirmée : on considère les AirPods toujours là et on réessaiera,
@@ -180,27 +207,69 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
     {
         State = SwitchState.Switching;
         _waitUntil = Now + options.SwitchTimeout;
+        _linkClock = Now;
+        _linkCameUp = false;
+        _linkLost = false;
         return MuteIfPlaying() ? [SwitchCommand.Reconnect, SwitchCommand.MuteSpeakers] : [SwitchCommand.Reconnect];
     }
+
+    // Bascule suivie (R7) : on note ce que fait la liaison pendant la bascule.
+    private IReadOnlyList<SwitchCommand> OnLink(bool? up)
+    {
+        bool? previous = _link;
+        _link = up;
+        if (State != SwitchState.Switching || up == previous) return None;
+        if (up == true) _linkCameUp = true;
+        else if (up == false)
+        {
+            // Établie puis coupée pendant la bascule : échec. Coupée alors qu'elle n'était qu'un reste de la
+            // relâche précédente (~3 s mesurées) : on attend la nouvelle liaison, LinkTimeout à partir de là.
+            if (_linkCameUp)
+            {
+                _linkLost = true;
+                return AbandonSwitch();
+            }
+            _linkClock = Now;
+        }
+        return None;
+    }
+
+    // Bascule suivie : les AirPods ne viendront pas. On abandonne tout de suite (demande de Romsy, recette S3 du
+    // 2026-11-21) : l'icône repasse au gris et « Amener sur ce PC » redevient possible. Disconnect annule l'essai
+    // en cours chez Windows ; s'ils arrivent quand même, ce sera une connexion non demandée, relâchée comme les autres.
+    private IReadOnlyList<SwitchCommand> AbandonSwitch()
+    {
+        State = SwitchState.Away;
+        _held = false;
+        _retakeAfterRelease = false;
+        return [SwitchCommand.Disconnect];
+    }
+
+    // Bascule suivie : les AirPods ne viendront pas (pas de liaison à temps, ou liaison perdue en route).
+    private bool LinkGivenUp => State == SwitchState.Switching && _link == false
+                                && (_linkLost || Now - _linkClock >= options.LinkTimeout);
 
     // true si on vient de couper les haut-parleurs (et il faut alors envoyer MuteSpeakers).
     private bool MuteIfPlaying()
     {
-        if (!options.MuteWhileSwitching || !_playing || _muted) return false;
+        if (!options.MuteWhileSwitching || !_playing || _muted || LinkGivenUp) return false;
         _muted = true;
         _mutedAt = Now;
         _unmuteAt = null;
         return true;
     }
 
-    // R7 : le son revient dans tous les cas, et au plus tard après MuteTimeout. Vérifié après chaque
-    // événement : on ne peut donc jamais laisser le PC muet par oubli d'un cas.
+    // R7 : le son revient dans tous les cas. Vérifié après chaque événement : on ne peut donc jamais laisser le PC
+    // muet par oubli d'un cas. Bascule suivie : tant que la liaison radio est établie, les AirPods arrivent, et
+    // seule la fin de la bascule (SwitchTimeout, 30 s) borne la coupure ; sans liaison lisible, MuteTimeout (20 s).
     private bool ShouldUnmute()
     {
         if (!_muted) return false;
         bool done = State is not (SwitchState.Switching or SwitchState.OnWindows) // abandon, relâche ou perte
-                 || Now - _mutedAt >= options.MuteTimeout                      // les AirPods tardent : on rend le son
-                 || (_unmuteAt is { } at && Now >= at);                            // arrivés, et Windows a basculé le son
+                 || (_unmuteAt is { } at && Now >= at)                            // arrivés, et Windows a basculé le son
+                 || LinkGivenUp                                                   // ils ne viendront pas
+                 || (_link is null && Now - _mutedAt >= options.MuteTimeout)      // liaison illisible : limite fixe
+                 || Now - _mutedAt >= options.SwitchTimeout;                      // garde-fou absolu, quoi qu'il arrive
         if (done)
         {
             _muted = false;

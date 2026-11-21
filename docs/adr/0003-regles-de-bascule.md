@@ -194,3 +194,64 @@ l'échec de la bascule (AirPods hors de portée, rangés) rend le son au PC.
   réagisse (`SoundConfirmDelay`, pour écarter les notifications) ; pendant ces 2 s, il sort des
   haut-parleurs. Le couper dès le premier son rendrait muettes toutes les notifications du PC tant que les
   AirPods sont sur l'iPhone.
+
+## Mise à jour : la bascule suivie (2026-11-09, v0.6.0)
+
+La limite fixe de la coupure (`MuteTimeout`, 20 s) restait un délai à l'aveugle : la commande de connexion ne
+renvoie aucun résultat. Le test L ([guide 4](../guide/04-protocole-test-phase0.md)) a mesuré la **liaison radio**
+(ACL), première étape de toute connexion :
+
+| Mesure (17 bascules, 4 essais injoignables) | Résultat |
+|---|---|
+| Reconnect → liaison établie | 0,37 à 3,94 s, à chaque fois |
+| liaison → son dans les AirPods | 0,7 à 0,85 s (micro retiré) ; 7,5 à 12,2 s (micro activé) |
+| AirPods dans le boîtier fermé ou hors de portée | **aucune** liaison, jamais |
+| après une relâche | la liaison reste ~3 s |
+
+**Règle R7 précisée : la coupure suit la liaison.**
+
+| Pendant la bascule | Décision |
+|---|---|
+| liaison établie | les AirPods arrivent : haut-parleurs coupés jusqu'à leur arrivée |
+| pas de liaison au bout de `LinkTimeout` (6 s) | injoignables : son rendu ; une lecture lancée ensuite ne coupe plus |
+| liaison établie **pendant** la bascule, puis perdue | échec : son rendu tout de suite |
+| liaison déjà là au départ (reste de relâche), puis perdue | pas un échec : on attend une nouvelle liaison, 6 s à partir de la coupure |
+| liaison illisible | limite fixe `MuteTimeout` (20 s), comme avant |
+| dans tous les cas | jamais plus de `SwitchTimeout` (30 s) : garde-fou absolu |
+
+- 6 s = la plus longue liaison mesurée (3,94 s) avec de la marge. Réglable dans `config.json` (`LinkTimeout`).
+- ~~L'essai de connexion n'est pas abandonné pour autant~~ : remplacé le 2026-11-21, la bascule est abandonnée à 6 s (voir « Recette S3–S4 » plus bas).
+- **Alternatives écartées** : relever encore `MuteTimeout` (le silence durerait plus longtemps quand les AirPods ne
+  viennent pas) ; abandonner la bascule dès 6 s (une connexion tardive serait perdue sans raison).
+- Le port `IRadioLink` est facultatif pour l'hôte : sans lui, ou s'il est illisible, ACAW se comporte comme la v0.5.0.
+- **Risque connu (revue de fin de phase)** : une coupure brève de la liaison pendant une bascule serait prise pour
+  un échec, et le son ressortirait des haut-parleurs jusqu'à l'arrivée. Aucune n'a été vue dans les 17 bascules
+  mesurées ; à surveiller en recette (S2) et dans le journal (`RadioLinkDown` entre `RadioLinkUp` et
+  `EndpointConnected`). Correction possible si ça arrive : un court délai de grâce avant de déclarer l'échec.
+
+### Recette S1–S3 (2026-11-21) et correction de la relâche pendant un essai
+
+- **S1 ✅** (4 bascules, micro retiré) : liaison à 0,4–1,2 s, son à 1,2–2,1 s. **S2 ✅** (5 bascules, micro
+  activé) : son à 9–14 s, **aucune fuite**, aucune coupure de liaison pendant les bascules (le risque connu ne
+  s'est pas présenté). **S3** : la liaison s'est établie puis perdue à 2,9 s, le son est revenu à 2,9 s (règle
+  « liaison perdue en route ») ✅.
+- **Défaut trouvé en S3, antérieur à la v0.6.0** : « Rendre » pendant un essai de connexion faisait passer la
+  machine en `Releasing`, à attendre 30 s une déconnexion impossible (rien n'était connecté). Pendant ce temps,
+  « Amener sur ce PC » était ignoré, puis la machine se croyait à tort sur le PC (`Releasing → OnWindows`).
+  **Corrigé** : depuis `Switching`, la relâche envoie `Disconnect` (annule l'essai) et revient directement à
+  `Away`. Et en fin de relâche non confirmée, si la liaison radio est coupée, les AirPods ne sont plus sur le PC :
+  `Away` (avec reprise si elle avait été demandée), au lieu de `OnWindows`. Sans liaison lisible, rien ne change.
+
+### Recette S3–S4 (2026-11-21) : abandon de la bascule à 6 s
+
+- **S3 ✅** (5 essais, boîtier fermé) : aucune liaison, son rendu à 6,0–6,2 s ; « Rendre » puis « Amener sur ce
+  PC » agissent tout de suite (correction précédente vérifiée).
+- **Décision changée à la demande de Romsy** : l'essai restait ouvert jusqu'à 30 s après les 6 s, si bien que
+  l'icône restait orange (« connexion aux AirPods ») et « Rendre à l'iPhone » restait proposé, alors qu'ils ne
+  viendraient pas. Désormais, **pas de liaison en 6 s, ou liaison perdue en route : la bascule est abandonnée**
+  (`Disconnect` annule l'essai chez Windows, retour à `Away`, icône grise, « Amener sur ce PC » de nouveau
+  possible). La demande « Amener » ne compte plus : s'ils arrivent quand même, ce sera une connexion non demandée,
+  rendue après le silence habituel. L'alternative de garder l'essai ouvert est abandonnée : elle ne servait qu'à
+  des AirPods arrivés en retard, jamais vus en mesure.
+- **S4 ✅** : AirPods enlevés pendant une vidéo → la liaison et la sortie audio tombent ensemble, la vidéo se met
+  en pause (règle R6) ; Romsy préfère ce comportement au son qui continuerait sur les haut-parleurs.

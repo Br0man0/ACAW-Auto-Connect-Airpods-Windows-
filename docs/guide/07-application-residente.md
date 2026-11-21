@@ -38,6 +38,7 @@ le remplissent :
 | `IMediaPort` | `MediaSessions` : contrôles média de Windows (SMTC) | `FakeMedia` |
 | `ISoundMeter` | `AudioMeter` : volume crête des sessions audio | `FakeMeter` : un volume réglable |
 | `IAirPodsRadar` | `AirPodsRadar` : écoute BLE | `FakeRadar` |
+| `IRadioLink` | `WindowsRadioLink` : liaison radio (WinRT `ConnectionStatusChanged`) | `FakeRadioLink` |
 
 C'est ce qu'on appelle l'architecture **« ports et adaptateurs »**. Elle permet de tester l'hôte entier,
 de bout en bout, sans AirPods, sans Bluetooth et sans attendre ([guide 8](08-strategie-de-test.md)).
@@ -91,10 +92,36 @@ Entre le début d'une vidéo et l'arrivée des AirPods (~2 s), Windows envoie le
 règle R7 de l'[ADR-0003](../adr/0003-regles-de-bascule.md) les coupe pendant ce temps :
 
 ```
-lecture démarre ──► Reconnect + MuteSpeakers          (haut-parleurs coupés, la vidéo continue)
-AirPods arrivés ──► 1 s plus tard : UnmuteSpeakers    (Windows a passé le son aux AirPods)
-pas d'AirPods   ──► 20 s au plus tard : UnmuteSpeakers (le son revient sur les haut-parleurs)
+lecture démarre        ──► Reconnect + MuteSpeakers    (haut-parleurs coupés, la vidéo continue)
+liaison radio établie  ──► on attend, sans limite courte (ils arrivent : 0,7 à 12 s plus tard)
+AirPods arrivés        ──► 1 s plus tard : UnmuteSpeakers (Windows a passé le son aux AirPods)
+pas de liaison en 6 s  ──► Disconnect + UnmuteSpeakers   (injoignables : essai abandonné, son sur les haut-parleurs, icône grise)
+liaison perdue en route ─► Disconnect + UnmuteSpeakers  (échec : abandon tout de suite)
 ```
+
+### La bascule suivie (v0.6.0)
+
+Jusqu'à la v0.5.0, ACAW attendait les AirPods **à l'aveugle** : la commande de connexion ne dit ni « en
+cours » ni « échoué », alors il rendait le son au bout d'un délai fixe (6 s, puis 20 s). Trop court, le son
+fuyait pendant une bascule lente ; trop long, on attendait dans le silence des AirPods qui ne viendraient pas.
+
+Une connexion Bluetooth audio se fait en deux étapes : la **liaison radio**, puis le **profil musique**. La
+mesure du test L ([guide 4](04-protocole-test-phase0.md)) a montré que la liaison s'établit toujours en moins
+de 4 s quand les AirPods arrivent, et **jamais** quand ils sont injoignables. Le port `IRadioLink` la suit :
+
+- l'adaptateur `WindowsRadioLink` lit `BluetoothDevice.ConnectionStatus` et écoute ses changements (WinRT) ;
+- l'hôte relaie chaque **vrai** changement à la machine (`RadioLinkUp`, `RadioLinkDown`, `RadioLinkUnknown`) et
+  le note au journal ; il relit la liaison à chaque synchronisation et toutes les 30 s ;
+- la machine décide : liaison établie = on attend ; pas de liaison en `LinkTimeout` (6 s) = on rend le son.
+
+**Le cas piège** : juste après une relâche, la liaison reste établie ~3 s. Si une vidéo redémarre pendant ce
+temps, la liaison est déjà là au départ, puis elle peut se couper. Ce n'est pas un échec : la machine attend
+alors une nouvelle liaison, 6 s à partir de la coupure. Seule une liaison **établie pendant la bascule** puis
+perdue compte comme un échec.
+
+**Sans liaison lisible** (WinRT en panne), on retombe sur la limite fixe `MuteTimeout` (20 s). Et quoi qu'il
+arrive, la coupure ne dépasse jamais `SwitchTimeout` (30 s) : c'est le garde-fou absolu, vérifié par les
+invariants.
 
 Trois sécurités pour ne jamais laisser le PC muet :
 1. la machine rétablit le son dans **tous** les cas (vérifié par les invariants : 2 000 séquences au hasard) ;
