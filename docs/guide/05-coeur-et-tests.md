@@ -77,7 +77,7 @@ le résultat. On les lance tous d'un coup :
 dotnet test
 ```
 
-Résultat attendu : `Réussi! - échec: 0, réussite: 170` pour le cœur (et 53 de plus pour les tests Windows : 11 tests fumée et 42 sans matériel, sur le démarrage avec Windows, les chemins de driver Bluetooth et le micro, la surveillance de `config.json`, le profil mains libres et le signal d'arrêt). Si un test échoue, la sortie dit lequel, ce qui
+Résultat attendu : `Réussi! - échec: 0, réussite: 179` pour le cœur (et 53 de plus pour les tests Windows : 11 tests fumée et 42 sans matériel, sur le démarrage avec Windows, les chemins de driver Bluetooth et le micro, la surveillance de `config.json`, le profil mains libres et le signal d'arrêt). Si un test échoue, la sortie dit lequel, ce qui
 était attendu et ce qui a été obtenu.
 
 Le projet utilise **xUnit** :

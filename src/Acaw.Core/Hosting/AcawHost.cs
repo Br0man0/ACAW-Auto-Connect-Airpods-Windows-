@@ -179,7 +179,9 @@ public sealed class AcawHost : IDisposable
         switch (input)
         {
             case Heartbeat:
-                if (_autoSwitch) Feed(_tracker.OnPeak(_meter.ReadPeak()));
+                // Fenêtre de démarrage : les sons d'applis (son d'Opera GX au lancement) ne prennent pas les AirPods.
+                // Les vraies lectures, elles, passent par les contrôles média (MediaChanged) et les prennent toujours.
+                if (_autoSwitch && !_machine.InStartupWindow) Feed(_tracker.OnPeak(_meter.ReadPeak()));
                 Feed([new Tick()]);
                 if (_radarRetryAt is { } at && _time.GetUtcNow() >= at) StartRadar();
                 if (_profileSettleAt is { } settled && _time.GetUtcNow() >= settled) EndProfileSuppression();
@@ -227,6 +229,8 @@ public sealed class AcawHost : IDisposable
                     _speakersRestored = true;
                     _speakers.Unmute();
                 }
+                // Avant de relire le casque : des AirPods déjà reconnectés par Windows au démarrage seront rendus vite.
+                Feed([new Started()]);
                 CheckHeadset();
                 if (_autoSwitch) Feed(_tracker.OnMediaPlaying(_media.IsPlaying));
                 StartRadar();

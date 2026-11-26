@@ -98,6 +98,52 @@ public class SwitchStateMachineTests
         Assert.Equal(SwitchState.OnWindows, _machine.State); // sans liaison lisible : on les croit encore là
     }
 
+    // ── Fenêtre de démarrage (journal du 2026-11-26) ──
+
+    [Fact]
+    public void Demarrage_connexion_non_demandee_rendue_en_2_s()
+    {
+        Send(new Started());
+        Send(new EndpointConnected()); // Windows reconnecte de lui-même
+
+        Assert.Empty(After(1.9));
+        Assert.Equal([Disconnect], After(0.2));
+    }
+
+    [Fact]
+    public void Demarrage_connexion_demandee_garde_ses_delais_habituels()
+    {
+        Send(new Started());
+        Send(new AirPodsSeen());
+        Send(new PlaybackStarted());   // ACAW les appelle lui-même
+        Send(new PlaybackPaused());    // pause pendant la connexion
+        Send(new EndpointConnected());
+
+        Assert.Empty(After(4.9));                // pas 2 s : la connexion a été demandée
+        Assert.Equal([Disconnect], After(0.2));  // délai de pause habituel (5 s)
+    }
+
+    [Fact]
+    public void Apres_la_fenetre_de_demarrage_connexion_non_demandee_30_s()
+    {
+        Send(new Started());
+        _time.Advance(TimeSpan.FromMinutes(2.1));
+        Send(new EndpointConnected());
+
+        Assert.Empty(After(29.9));
+        Assert.Equal([Disconnect], After(0.2));
+    }
+
+    [Fact]
+    public void Demarrage_connexion_non_demandee_pendant_une_lecture_gardee()
+    {
+        Send(new Started());
+        Send(new PlaybackStarted());   // AirPods endormis : pas d'appel
+        Send(new EndpointConnected()); // Windows les connecte : le son y va, on les garde
+
+        Assert.Empty(After(60));
+    }
+
     [Fact]
     public void R1_Lecture_avec_AirPods_eveilles_les_prend()
     {

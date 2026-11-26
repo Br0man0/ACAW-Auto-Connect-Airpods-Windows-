@@ -124,7 +124,9 @@ l'[ADR-0003](../adr/0003-regles-de-bascule.md) : `PauseDelay` (5 s), `SilenceDel
 (2 s), `UnmuteDelay` (1 s), `MuteTimeout` (20 s : durée maximale de la coupure des haut-parleurs pendant
 l'arrivée des AirPods ; elle s'appelait `MaxMuteDuration` et valait 6 s, trop court, jusqu'à la v0.5.0), `LinkTimeout` (6 s : sans liaison radio au bout de ce délai, les AirPods sont jugés injoignables et le son
 revient sur les haut-parleurs ; avec liaison, la coupure dure jusqu'à leur arrivée, et `MuteTimeout` ne sert
-plus que si la liaison est illisible), et `MuteWhileSwitching` (`true` ; `false` pour ne
+plus que si la liaison est illisible), `StartupWindow` (2 min) et `StartupReleaseDelay` (2 s : pendant les 2 minutes qui suivent le
+lancement d'ACAW ou la sortie de veille, des AirPods reconnectés par Windows sans qu'on les demande sont rendus
+en 2 s, et les sons d'applis comme celui d'Opera GX ne les prennent pas), et `MuteWhileSwitching` (`true` ; `false` pour ne
 jamais couper les haut-parleurs). On peut les modifier à la main (format `"00:00:05"`) : **ACAW relit le
 fichier tout seul** une demi-seconde après l'enregistrement, sans qu'il faille le relancer.
 

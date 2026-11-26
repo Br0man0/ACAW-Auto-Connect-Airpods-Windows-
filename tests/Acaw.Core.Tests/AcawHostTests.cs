@@ -44,6 +44,9 @@ public sealed class AcawHostTests : IDisposable
 
     private void Run() => _host.ProcessPending();
 
+    // Laisse passer la fenêtre de démarrage (2 min), pendant laquelle les sons d'applis sont ignorés.
+    private void AfterStartupWindow() => Wait(new SwitchOptions().StartupWindow.TotalSeconds + 0.25);
+
     private void AirPodsAwake()
     {
         _radar.Sees();
@@ -185,10 +188,82 @@ public sealed class AcawHostTests : IDisposable
         Assert.Equal(1, _speakers.Unmutes); // sans effet si rien n'avait été coupé (cf. SpeakerMute)
     }
 
+    // ── Démarrage du PC (journal du 2026-11-26) ──
+
+    [Fact]
+    public void Demarrage_AirPods_reconnectes_par_Windows_rendus_en_2_s()
+    {
+        _headset.State = HeadsetState.Connected; // Windows les a reconnectés avant le lancement d'ACAW
+        Start();
+        Assert.Equal(SwitchState.OnWindows, _host.State);
+        Assert.Contains("Événement Started (Away → Away)", _log);
+
+        Wait(1.75);
+        Assert.Equal(0, _headset.Disconnects);
+        Wait(0.5);
+        Assert.Equal(1, _headset.Disconnects); // avant : 30 s loin de l'iPhone
+    }
+
+    [Fact]
+    public void Demarrage_son_d_Opera_GX_au_lancement_ne_prend_pas_les_AirPods()
+    {
+        Start();
+        Wait(50);
+        AirPodsAwake();       // éveillés au moment du son : sans la règle, ils seraient pris
+
+        _meter.Peak = 0.4f;   // le son d'Opera GX, ~3,5 s, 51 s après le lancement
+        Wait(3.5);
+        _meter.Peak = 0;
+        Wait(5);
+
+        Assert.Equal(0, _headset.Connects);
+    }
+
+    [Fact]
+    public void Demarrage_une_vraie_lecture_prend_toujours_les_AirPods()
+    {
+        Start();
+        AirPodsAwake();
+
+        _media.Plays(true); // YouTube, Spotify… : passe par les contrôles média
+        Run();
+
+        Assert.Equal(1, _headset.Connects);
+    }
+
+    [Fact]
+    public void Hors_demarrage_une_connexion_non_demandee_laisse_30_s_comme_avant()
+    {
+        Start();
+        AfterStartupWindow();
+
+        _headset.Becomes(HeadsetState.Connected); // connectés à la main depuis les réglages Bluetooth
+        Run();
+        Wait(29.5);
+        Assert.Equal(0, _headset.Disconnects);
+        Wait(0.75);
+        Assert.Equal(1, _headset.Disconnects);
+    }
+
+    [Fact]
+    public void Sortie_de_veille_rouvre_la_fenetre_de_demarrage()
+    {
+        Start();
+        AfterStartupWindow();
+
+        _host.OnResumed();
+        _headset.Becomes(HeadsetState.Connected); // Windows reconnecte au réveil
+        Run();
+        Wait(2.25);
+
+        Assert.Equal(1, _headset.Disconnects);
+    }
+
     [Fact]
     public void Notification_Discord_ne_vole_pas_les_AirPods()
     {
         Start();
+        AfterStartupWindow(); // sinon la fenêtre de démarrage ignorerait le son de toute façon
         AirPodsAwake();
 
         _meter.Peak = 0.4f;
@@ -203,6 +278,7 @@ public sealed class AcawHostTests : IDisposable
     public void Jeu_qui_fait_du_son_amene_les_AirPods_apres_2_s()
     {
         Start();
+        AfterStartupWindow(); // hors de la fenêtre de démarrage, où les sons d'applis sont ignorés
         AirPodsAwake();
 
         _meter.Peak = 0.4f;

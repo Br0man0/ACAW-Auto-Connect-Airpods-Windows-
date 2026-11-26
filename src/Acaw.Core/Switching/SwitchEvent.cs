@@ -42,5 +42,11 @@ public sealed record RadioLinkUnknown : SwitchEvent;
 /// <summary>Une annonce BLE des AirPods vient d'être reçue : ils sont éveillés.</summary>
 public sealed record AirPodsSeen : SwitchEvent;
 
+/// <summary>
+/// ACAW vient de démarrer, ou le PC sort de veille : Windows va peut-être reconnecter les AirPods de lui-même.
+/// Ouvre la fenêtre de démarrage (<see cref="SwitchOptions.StartupWindow"/>).
+/// </summary>
+public sealed record Started : SwitchEvent;
+
 /// <summary>Battement régulier envoyé par l'hôte pour faire avancer les minuteurs.</summary>
 public sealed record Tick : SwitchEvent;

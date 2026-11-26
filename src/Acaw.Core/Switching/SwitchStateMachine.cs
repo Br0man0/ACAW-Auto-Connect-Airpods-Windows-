@@ -24,6 +24,7 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
     private DateTimeOffset _linkClock;     // depuis quand on attend la liaison (début de bascule, ou sa coupure)
     private bool _linkCameUp;              // la liaison s'est établie pendant cette bascule
     private bool _linkLost;                // … puis s'est coupée : la bascule a échoué
+    private DateTimeOffset? _startedAt;    // dernier démarrage d'ACAW ou sortie de veille (Started)
 
     public SwitchState State { get; private set; } = SwitchState.Away;
 
@@ -43,6 +44,7 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
             RadioLinkDown => OnLink(false),
             RadioLinkUnknown => OnLink(null),
             Tick => OnTick(),
+            Started => OnStarted(),
             _ => None,
         };
         return ShouldUnmute() ? [.. commands, SwitchCommand.UnmuteSpeakers] : commands;
@@ -141,8 +143,12 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
     // 5 s si une pause a eu lieu pendant la connexion, 30 s sinon (sauf s'ils ont été amenés à la main).
     private IReadOnlyList<SwitchCommand> OnConnected()
     {
+        bool requested = State == SwitchState.Switching;
         State = SwitchState.OnWindows;
-        _releaseAt = _playing || _held ? null : Now + _idleDelay;
+        // Au démarrage du PC (ou au réveil), Windows reconnecte de lui-même les AirPods et les arrache à l'iPhone
+        // (journal du 2026-11-26) : personne ne les a demandés, on les rend vite.
+        var delay = !requested && InStartupWindow ? options.StartupReleaseDelay : _idleDelay;
+        _releaseAt = _playing || _held ? null : Now + delay;
         if (_muted) _unmuteAt = Now + options.UnmuteDelay; // laisser à Windows le temps de passer le son aux AirPods
         return None;
     }
@@ -285,6 +291,16 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
         _retakeAfterRelease = false;
         _waitUntil = Now + options.SwitchTimeout;
     }
+
+    // ACAW vient de démarrer, ou le PC sort de veille : début de la fenêtre de démarrage.
+    private IReadOnlyList<SwitchCommand> OnStarted()
+    {
+        _startedAt = Now;
+        return None;
+    }
+
+    /// <summary>Dans les StartupWindow qui suivent le démarrage d'ACAW ou la sortie de veille.</summary>
+    public bool InStartupWindow => _startedAt is { } started && Now - started <= options.StartupWindow;
 
     private IReadOnlyList<SwitchCommand> OnAirPodsSeen()
     {

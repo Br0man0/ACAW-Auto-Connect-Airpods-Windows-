@@ -44,4 +44,15 @@ public sealed record SwitchOptions
     /// (17 bascules), jamais quand les AirPods sont injoignables (guide 4, test L, 2026-11-09).
     /// </summary>
     public TimeSpan LinkTimeout { get; init; } = TimeSpan.FromSeconds(6);
+
+    /// <summary>
+    /// Fenêtre de démarrage, après le lancement d'ACAW ou la sortie de veille. Windows reconnecte alors les AirPods de
+    /// lui-même, et les applis lancées avec Windows font du bruit (son d'Opera GX, journal du 2026-11-26) : une
+    /// connexion non demandée est rendue en <see cref="StartupReleaseDelay"/>, et un son hors lecteur média ne
+    /// prend pas les AirPods. Une vraie lecture (contrôles média de Windows) les prend toujours.
+    /// </summary>
+    public TimeSpan StartupWindow { get; init; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>Pendant la fenêtre de démarrage, délai avant de rendre des AirPods connectés sans qu'on les demande.</summary>
+    public TimeSpan StartupReleaseDelay { get; init; } = TimeSpan.FromSeconds(2);
 }

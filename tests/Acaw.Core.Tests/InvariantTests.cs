@@ -19,7 +19,7 @@ public class InvariantTests
     [
         new PlaybackStarted(), new PlaybackPaused(), new SilenceDetected(), new ReleaseRequested(),
         new TakeRequested(), new EndpointConnected(), new EndpointDisconnected(), new AirPodsSeen(), new Tick(),
-        new RadioLinkUp(), new RadioLinkDown(), new RadioLinkUnknown(),
+        new RadioLinkUp(), new RadioLinkDown(), new RadioLinkUnknown(), new Started(),
     ];
 
     public static TheoryData<int> Seeds() => [.. Enumerable.Range(0, 10).Select(i => i * 7919)];

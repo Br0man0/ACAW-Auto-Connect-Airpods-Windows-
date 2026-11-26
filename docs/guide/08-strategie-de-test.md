@@ -283,3 +283,11 @@ Lancer `acaw watch` à côté (guide 6) : le journal doit montrer `Événement R
 | S2 | micro **coché** (bascules de 10 à 15 s) : pareil, 5 fois | **aucun** son sur les haut-parleurs, à aucun moment ; `UnmuteSpeakers` toujours après `EndpointConnected` | ✅ (2026-11-21 : son à 9 à 14 s, aucune fuite, aucune coupure de liaison) |
 | S3 | AirPods **dans le boîtier fermé** : menu → « Amener sur ce PC », puis lancer une vidéo tout de suite | le son sort des haut-parleurs au bout de **~6 s** (et non 20 s) ; journal : `Délai écoulé` + `UnmuteSpeakers` ~6 s après `Reconnect` | ✅ (2026-11-21 : son rendu à 6,0–6,2 s ; « Rendre » et « Amener » immédiats ; depuis, la bascule est abandonnée à 6 s : icône grise) |
 | S4 | AirPods portés puis rangés dans le boîtier fermé (moins de 30 s avant) : lancer une vidéo | idem S3 : son sur les haut-parleurs au bout de ~6 s | ✅ (2026-11-21 : AirPods enlevés → pause de la vidéo, règle R6, comportement voulu) |
+
+### Recette de la fenêtre de démarrage (v0.6.1)
+
+| # | Geste | Attendu | ✓ |
+|---|---|---|---|
+| W1 | AirPods sur l'iPhone, redémarrer le PC (Opera GX lancé avec Windows) | les AirPods quittent l'iPhone au plus quelques secondes ; journal : `Started`, puis `EndpointConnected (Away → OnWindows)` suivi d'un `Disconnect` **2 s** plus tard ; le son d'Opera ne déclenche aucun `PlaybackStarted` | |
+| W2 | dans les 2 min après le démarrage, lancer une vidéo YouTube | les AirPods viennent comme d'habitude | |
+| W3 | mise en veille puis réveil, AirPods sur l'iPhone | pareil que W1 | |

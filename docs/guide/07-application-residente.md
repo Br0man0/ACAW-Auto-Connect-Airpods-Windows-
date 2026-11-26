@@ -86,6 +86,21 @@ l'état réel du casque et des lecteurs, et relance l'écoute BLE. Si l'écoute 
 
 Par sécurité, l'hôte relit aussi l'état du casque toutes les 30 s, même sans notification de Windows.
 
+### La fenêtre de démarrage (v0.6.1)
+
+Au démarrage du PC et au réveil, **Windows reconnecte de lui-même** les AirPods qu'il connaît, et les arrache à
+l'iPhone. Les applis lancées avec Windows font aussi du bruit (le son de lancement d'Opera GX, par exemple).
+
+À chaque synchronisation (lancement d'ACAW, sortie de veille), l'hôte envoie donc `Started` à la machine **avant**
+de relire le casque, ce qui ouvre une fenêtre de 2 minutes :
+
+- des AirPods trouvés connectés sans qu'ACAW les ait demandés, alors que rien ne joue, sont rendus en **2 s** ;
+- l'hôte ne transmet pas les sons d'applis au tracker (`OnPeak` ignoré) : seule une vraie lecture, vue par les
+  contrôles média, prend les AirPods.
+
+L'ordre compte : si `Started` arrivait après la relecture du casque, la connexion trouvée au démarrage aurait déjà
+reçu le délai de 30 s. Un test le vérifie.
+
 ## Pas de son dans la pièce pendant l'arrivée des AirPods
 
 Entre le début d'une vidéo et l'arrivée des AirPods (~2 s), Windows envoie le son aux haut-parleurs. La

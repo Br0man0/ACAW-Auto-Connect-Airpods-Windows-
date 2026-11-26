@@ -24,7 +24,7 @@ Prérequis : Windows 10/11 (64 bits), Bluetooth activé, AirPods appairés au PC
 3. C'est tout : ACAW se lance, démarre avec Windows, et choisit tout seul les AirPods s'il n'y en a
    qu'une paire ; sinon, menu de l'icône → AirPods.
 
-Pour développer, il faut le [SDK .NET 10](https://dotnet.microsoft.com/download). Lancer les tests (223 tests,
+Pour développer, il faut le [SDK .NET 10](https://dotnet.microsoft.com/download). Lancer les tests (232 tests,
 quelques secondes) :
 
 ```bash
@@ -66,6 +66,7 @@ Décisions d'architecture :
 | — | Configuration à chaud (choix automatique des AirPods, sous-menu AirPods) | ✅ code et tests · recette en cours |
 | — | Installation propre : installateur sans droits admin, GitHub Release automatique (v0.4.0) | ✅ |
 | — | Micro des AirPods d'un clic (profil mains libres), relâché avec la musique (v0.5.0) | ✅ |
-| — | Bascule suivie : la liaison radio dit si les AirPods arrivent, plus de son dans la pièce (v0.6.0) | ✅ code et tests · recette en cours |
+| — | Bascule suivie : la liaison radio dit si les AirPods arrivent, plus de son dans la pièce (v0.6.0) | ✅ |
+| — | Démarrage du PC : AirPods reconnectés par Windows rendus en 2 s, sons d'applis ignorés (v0.6.1) | ✅ code et tests · recette en cours |
 | 3 | Optimisation de la vitesse, mesurée | ⏳ |
 | 4 | Pause au retrait d'un écouteur | ⏸️ reportée : impossible sans driver signé ([ADR-0004](docs/adr/0004-pause-au-retrait.md)) |

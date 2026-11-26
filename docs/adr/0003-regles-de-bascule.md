@@ -255,3 +255,37 @@ renvoie aucun résultat. Le test L ([guide 4](../guide/04-protocole-test-phase0.
   des AirPods arrivés en retard, jamais vus en mesure.
 - **S4 ✅** : AirPods enlevés pendant une vidéo → la liaison et la sortie audio tombent ensemble, la vidéo se met
   en pause (règle R6) ; Romsy préfère ce comportement au son qui continuerait sur les haut-parleurs.
+
+## Mise à jour : la fenêtre de démarrage (2026-11-26, v0.6.1)
+
+Constat de Romsy : au démarrage du PC, les AirPods quittent l'iPhone. Son journal :
+
+```
+12:13:35.693  Événement EndpointConnected (Away → OnWindows)   ← Windows les a reconnectés seul, avant ACAW
+12:14:05.936  Délai écoulé (OnWindows → Releasing)              ← rendus seulement après 30 s
+12:14:26.934  Événement PlaybackStarted (Away → Switching)      ← le son de lancement d'Opera GX (~3,5 s)…
+12:15:00.683  Délai écoulé (OnWindows → Releasing)              ← … les reprend 30 s de plus
+```
+
+Deux causes : Windows reconnecte de lui-même les appareils audio Bluetooth connus au démarrage (et au réveil),
+et les applis lancées avec Windows font du bruit. ACAW ne peut pas empêcher Windows de reconnecter les AirPods
+sans toucher à ses réglages Bluetooth ; il peut les rendre vite.
+
+**Fenêtre de démarrage : les `StartupWindow` (2 min) qui suivent le lancement d'ACAW ou la sortie de veille**
+(événement `Started`, envoyé par l'hôte à chaque synchronisation, avant de relire le casque) :
+
+| Pendant la fenêtre | Décision |
+|---|---|
+| AirPods connectés sans que personne ne l'ait demandé, rien ne joue | rendus au bout de `StartupReleaseDelay` (2 s) au lieu de 30 s |
+| son sans lecteur média (Opera GX, Discord, jeu) | ignoré : ne prend pas les AirPods |
+| vraie lecture (contrôles média de Windows : YouTube, Spotify…) | prend les AirPods, comme toujours |
+| connexion demandée par ACAW | délais habituels |
+
+- Hors de la fenêtre, rien ne change : des AirPods connectés à la main depuis les réglages Bluetooth de Windows
+  laissent toujours 30 s pour lancer un son.
+- **Alternatives écartées** : rendre toute connexion non demandée en 2 s (on casserait la connexion à la main) ;
+  relever `SoundConfirmDelay` pour tous (les jeux et Discord mettraient plus longtemps à prendre les AirPods toute
+  la journée, pour un problème qui n'existe qu'au démarrage).
+- **Effets de bord connus** : un jeu lancé dans les 2 minutes après le démarrage n'amène les AirPods qu'à la fin de
+  la fenêtre (une vraie lecture, elle, les amène tout de suite) ; changer d'AirPods dans le menu redémarre l'hôte
+  et rouvre donc la fenêtre (des AirPods connectés au PC sans rien qui joue seraient rendus en 2 s au lieu de 30 s).
