@@ -60,6 +60,7 @@ Linux. Il fait la bascule à ta place, en arrière-plan, depuis une petite icôn
 | 💼 **AirPods rangés ou hors de portée** | ACAW le détecte en moins de 6 s et laisse le son sur les haut-parleurs. |
 | 💻 **Au démarrage du PC** | Windows reconnecte parfois les AirPods tout seul : ACAW les rend aussitôt à l'iPhone. |
 | 🎙️ **Micro des AirPods** | Une case du menu l'active pour tes appels, et le retire ensuite pour garder des bascules rapides. |
+| 🌍 **Français ou anglais** | La langue se choisit à l'installation, et se change à tout moment : menu → **Langue / Language**. |
 
 **L'icône dans la barre des tâches** dit où sont tes AirPods :
 
@@ -134,7 +135,7 @@ les autres modèles devraient fonctionner de la même façon.
 → Bluetooth et appareils → Ajouter un appareil, boîtier ouvert, bouton du boîtier maintenu jusqu'au voyant blanc).
 
 1. Va dans les [**Releases**](../../releases/latest) et télécharge **`acaw-setup-X.Y.Z.exe`**.
-2. Lance-le. Windows peut afficher « Windows a protégé votre ordinateur » : l'installateur n'est pas signé.
+2. Lance-le et choisis la langue (français ou anglais). Windows peut afficher « Windows a protégé votre ordinateur » : l'installateur n'est pas signé.
    Clique sur **Informations complémentaires → Exécuter quand même**.
 3. C'est tout : ACAW s'installe sans droits administrateur (.NET inclus), se lance et démarrera avec Windows.
    S'il n'y a qu'une paire d'AirPods, il la choisit tout seul ; sinon, menu de l'icône → **AirPods**.

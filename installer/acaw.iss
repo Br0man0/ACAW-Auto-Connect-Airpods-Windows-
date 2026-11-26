@@ -22,7 +22,7 @@ AppName=ACAW
 AppVersion={#AppVersion}
 AppVerName=ACAW {#AppVersion}
 AppPublisher=Romsy
-AppComments=Bascule automatique des AirPods entre ce PC et l'iPhone
+AppComments=Bascule automatique des AirPods entre ce PC et l'iPhone / Automatic AirPods switching between this PC and the iPhone
 VersionInfoVersion={#AppVersion}
 DefaultDirName={userpf}\ACAW
 DisableDirPage=yes
@@ -41,12 +41,30 @@ UninstallDisplayIcon={app}\acaw-tray.exe
 ; ACAW est arrêté proprement par « acaw quit » (voir [Code]) : pas besoin du gestionnaire de redémarrage.
 CloseApplications=no
 SetupLogging=yes
+; Le choix de la langue s'affiche au lancement ; présélectionnée d'après la langue de Windows.
+ShowLanguageDialog=yes
+LanguageDetectionMethod=uilanguage
 
 [Languages]
 Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
+Name: "en"; MessagesFile: "compiler:Default.isl"
+
+[CustomMessages]
+; Les textes propres à ACAW, dans les deux langues. {cm:Nom} les insère ; le nom de la langue choisie, {language},
+; est passé à ACAW (« acaw language fr|en ») pour que l'application parle la même langue que l'installateur.
+fr.StartupTask=Démarrer ACAW avec Windows
+en.StartupTask=Start ACAW with Windows
+fr.StartupStatus=Démarrage avec Windows…
+en.StartupStatus=Start with Windows…
+fr.LaunchAcaw=Lancer ACAW
+en.LaunchAcaw=Launch ACAW
+fr.ShortcutComment=Bascule automatique des AirPods
+en.ShortcutComment=Automatic AirPods switching
+fr.DeleteSettings=Supprimer aussi les réglages et le journal d'ACAW ?%n(Choix des AirPods, délais, journal. Répondre Non pour les retrouver après une réinstallation.)
+en.DeleteSettings=Also delete ACAW's settings and log?%n(AirPods choice, delays, log. Answer No to keep them for a reinstall.)
 
 [Tasks]
-Name: "startup"; Description: "Démarrer ACAW avec Windows"
+Name: "startup"; Description: "{cm:StartupTask}"
 
 [InstallDelete]
 ; Restes d'une installation faite à la main avec « dotnet publish » (fichiers de débogage).
@@ -56,13 +74,15 @@ Type: files; Name: "{app}\*.pdb"
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{userprograms}\ACAW"; Filename: "{app}\acaw-tray.exe"; Comment: "Bascule automatique des AirPods"
+Name: "{userprograms}\ACAW"; Filename: "{app}\acaw-tray.exe"; Comment: "{cm:ShortcutComment}"
 
 [Run]
+; La langue choisie au début de l'installation devient celle d'ACAW.
+Filename: "{app}\acaw.exe"; Parameters: "language {language}"; Flags: runhidden
 ; Même code que la case « Démarrer avec Windows » du menu de l'icône (StartupShortcut).
-Filename: "{app}\acaw.exe"; Parameters: "startup on"; Flags: runhidden; Tasks: startup; StatusMsg: "Démarrage avec Windows…"
+Filename: "{app}\acaw.exe"; Parameters: "startup on"; Flags: runhidden; Tasks: startup; StatusMsg: "{cm:StartupStatus}"
 Filename: "{app}\acaw.exe"; Parameters: "startup off"; Flags: runhidden; Tasks: not startup
-Filename: "{app}\acaw-tray.exe"; Description: "Lancer ACAW"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\acaw-tray.exe"; Description: "{cm:LaunchAcaw}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 Filename: "{app}\acaw.exe"; Parameters: "startup off"; Flags: runhidden; RunOnceId: "StartupOff"
@@ -97,8 +117,7 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if (CurUninstallStep = usPostUninstall) and (not UninstallSilent) then
-    if MsgBox('Supprimer aussi les réglages et le journal d''ACAW ?' + #13#10 +
-              '(Choix des AirPods, délais, journal. Répondre Non pour les retrouver après une réinstallation.)',
+    if MsgBox(CustomMessage('DeleteSettings'),
               mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
     begin
       DelTree(ExpandConstant('{userappdata}\ACAW'), True, True, True);

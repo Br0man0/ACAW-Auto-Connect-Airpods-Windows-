@@ -10,9 +10,12 @@ namespace Acaw.Core.Config;
 public sealed record PairedHeadset(string Mac, string? ModelId, string Name, bool IsApple)
 {
     /// <summary>Nom donné quand Windows ne sait pas (encore) lire celui de l'appareil, par ex. à l'ouverture de session.</summary>
-    public const string UnreadableName = "(nom illisible)";
+    public static string UnreadableName => Lang.Pick(FrenchUnreadable, "(unreadable name)");
 
-    public bool HasReadableName => !string.IsNullOrWhiteSpace(Name) && Name != UnreadableName;
+    private const string FrenchUnreadable = "(nom illisible)";
+
+    public bool HasReadableName =>
+        !string.IsNullOrWhiteSpace(Name) && Name is not (FrenchUnreadable or "(unreadable name)"); // quelle que soit la langue
 }
 
 /// <summary>Pourquoi <see cref="AirPodsPicker"/> a choisi, ou n'a pas choisi.</summary>

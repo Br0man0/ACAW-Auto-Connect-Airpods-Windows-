@@ -3,7 +3,7 @@ namespace Acaw.Core.Config;
 /// <summary>Ce qu'il faut refaire quand la configuration change.</summary>
 public enum ConfigChange
 {
-    /// <summary>Rien (identique, ou seuls le nom affiché ou le choix du micro ont changé).</summary>
+    /// <summary>Rien (identique, ou seuls le nom affiché, le choix du micro ou la langue ont changé).</summary>
     Nothing,
 
     /// <summary>Seule la bascule automatique a changé : l'hôte en marche l'applique directement.</summary>
@@ -20,9 +20,9 @@ public static class ConfigChanges
     public static ConfigChange Compare(AcawConfig? running, AcawConfig next)
     {
         if (running is null) return ConfigChange.Restart;
-        // Le nom ne sert qu'à l'affichage, Microphone qu'à l'icône, et AutoSwitch s'applique sans redémarrer :
+        // Le nom ne sert qu'à l'affichage, Microphone qu'à l'icône, Language qu'aux textes, et AutoSwitch s'applique sans redémarrer :
         // on les met de côté.
-        var rest = running with { Name = next.Name, AutoSwitch = next.AutoSwitch, Microphone = next.Microphone };
+        var rest = running with { Name = next.Name, AutoSwitch = next.AutoSwitch, Microphone = next.Microphone, Language = next.Language };
         if (rest != next) return ConfigChange.Restart;
         return running.AutoSwitch == next.AutoSwitch ? ConfigChange.Nothing : ConfigChange.AutoSwitch;
     }

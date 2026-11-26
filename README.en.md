@@ -16,8 +16,6 @@
 
 </div>
 
-> The app itself is in French; this page translates what it does.
-
 ---
 
 ## Contents
@@ -61,6 +59,7 @@ Linux. It does the switching for you, in the background, from a small icon in th
 | 💼 **AirPods in their case or out of range** | ACAW notices in under 6 s and leaves the sound on the speakers. |
 | 💻 **When the PC starts** | Windows sometimes reconnects the AirPods by itself: ACAW hands them straight back to the iPhone. |
 | 🎙️ **AirPods microphone** | A menu checkbox turns it on for your calls, and off again to keep switching fast. |
+| 🌍 **English or French** | Pick the language during installation, and change it any time: menu → **Langue / Language**. |
 
 **The taskbar icon** shows where your AirPods are:
 
@@ -131,7 +130,7 @@ models should behave the same way.
 Bluetooth & devices → Add device, case open, case button held until the light turns white).
 
 1. Go to the [**Releases**](../../releases/latest) and download **`acaw-setup-X.Y.Z.exe`**.
-2. Run it. Windows may say "Windows protected your PC": the installer is not signed. Click **More info → Run
+2. Run it and pick the language (English or French). Windows may say "Windows protected your PC": the installer is not signed. Click **More info → Run
    anyway**.
 3. That's it: ACAW installs without admin rights (.NET included), starts, and will start with Windows. If there is
    only one pair of AirPods, it picks it on its own; otherwise, icon menu → **AirPods**.

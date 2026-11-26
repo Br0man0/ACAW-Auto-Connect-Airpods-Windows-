@@ -1,3 +1,4 @@
+using Acaw.Core;
 using Acaw.Core.Hosting;
 
 namespace Acaw.Windows.Bluetooth;
@@ -42,7 +43,9 @@ public sealed class WindowsHeadset(string mac) : IHeadsetPort, IDisposable
     {
         BluetoothAudio.Disconnect(Resolve() ?? throw NotFound());
         if (BluetoothAudio.ReleaseHandsFree(mac) is { } code)
-            FileLog.Write(code == 0 ? "Micro des AirPods relâché aussi" : $"Relâche du micro des AirPods refusée (code Windows {code})");
+            FileLog.Write(code == 0
+                ? Lang.Pick("Micro des AirPods relâché aussi", "AirPods microphone released too")
+                : Lang.Pick($"Relâche du micro des AirPods refusée (code Windows {code})", $"AirPods microphone release refused (Windows code {code})"));
     }
 
     public void Dispose() => Forget();
@@ -67,5 +70,6 @@ public sealed class WindowsHeadset(string mac) : IHeadsetPort, IDisposable
     }
 
     private static InvalidOperationException NotFound() =>
-        new("AirPods introuvables : Bluetooth coupé, ou AirPods plus appairés à ce PC.");
+        new(Lang.Pick("AirPods introuvables : Bluetooth coupé, ou AirPods plus appairés à ce PC.",
+                      "AirPods not found: Bluetooth is off, or the AirPods are no longer paired with this PC."));
 }

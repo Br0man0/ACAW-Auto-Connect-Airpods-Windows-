@@ -25,6 +25,9 @@ public sealed record AcawConfig
     /// </summary>
     public bool Microphone { get; init; }
 
+    /// <summary>Langue des textes : « fr », « en », ou vide pour suivre la langue de Windows (voir <see cref="Lang"/>).</summary>
+    public string? Language { get; init; }
+
     public SwitchOptions Switching { get; init; } = new();
 
     [JsonIgnore] // calculé, pas enregistré

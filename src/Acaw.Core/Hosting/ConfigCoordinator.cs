@@ -90,16 +90,20 @@ public sealed class ConfigCoordinator(IConfigSource source, IHeadsetCatalog cata
         }
         catch (IOException e)
         {
-            log($"Configuration momentanément inaccessible ({e.Message}), nouvel essai");
+            log(Lang.Pick($"Configuration momentanément inaccessible ({e.Message}), nouvel essai",
+                         $"Configuration temporarily unavailable ({e.Message}), retrying"));
             return false;
         }
         catch (InvalidDataException e)
         {
             // Un fichier abîmé ne fait rien perdre : on garde ce qui tourne.
-            Report(Host is null ? e.Message : $"{e.Message}. La configuration précédente est gardée.");
+            Report(Host is null ? e.Message : $"{e.Message}. {KeptPrevious}");
             if (Host is null) SetProblem(e.Message);
             return true;
         }
+
+        // La langue d'abord : les messages qui suivent sont déjà dans la bonne.
+        Lang.Current = Lang.Resolve(next.Language);
 
         var paired = catalog.List();
         var pick = AirPodsPicker.Pick(next, paired);
@@ -108,12 +112,15 @@ public sealed class ConfigCoordinator(IConfigSource source, IHeadsetCatalog cata
             next = next.WithHeadset(chosen);
             TrySave(next);
             Report(pick.Reason == PickReason.Replaced
-                ? $"Les AirPods configurés ne sont plus appairés : ACAW pilote maintenant {chosen.Name}."
-                : $"ACAW pilote {chosen.Name}. Pour en changer : menu de l'icône → AirPods.");
+                ? Lang.Pick($"Les AirPods configurés ne sont plus appairés : ACAW pilote maintenant {chosen.Name}.",
+                            $"The configured AirPods are no longer paired: ACAW now drives {chosen.Name}.")
+                : Lang.Pick($"ACAW pilote {chosen.Name}. Pour en changer : menu de l'icône → AirPods.",
+                            $"ACAW drives {chosen.Name}. To change: icon menu → AirPods."));
         }
         else if (pick.Reason == PickReason.Orphan)
         {
-            Report($"{next.Name} n'est plus appairé à ce PC. Choisis tes AirPods dans le menu de l'icône.");
+            Report(Lang.Pick($"{next.Name} n'est plus appairé à ce PC. Choisis tes AirPods dans le menu de l'icône.",
+                             $"{next.Name} is no longer paired with this PC. Choose your AirPods in the icon menu."));
         }
         else if (pick.Reason == PickReason.Configured
                  && paired.FirstOrDefault(h => AirPodsPicker.SameMac(h.Mac, next.Mac)) is { HasReadableName: true } same
@@ -131,13 +138,15 @@ public sealed class ConfigCoordinator(IConfigSource source, IHeadsetCatalog cata
             {
                 // À l'ouverture de session, Windows peut ne rien lister pendant quelques secondes : pas de bulle,
                 // le prochain essai (toutes les 30 s) dira la vérité.
-                if (Host is null) SetProblem("Recherche des AirPods…");
+                if (Host is null) SetProblem(Lang.Pick("Recherche des AirPods…", "Looking for the AirPods…"));
                 return true;
             }
             string why = pick.Reason == PickReason.Several
-                ? "Plusieurs AirPods sont appairés : choisis les tiens dans le menu de l'icône → AirPods."
-                : "Aucun AirPods appairé à ce PC. Appaire-les dans les paramètres Bluetooth de Windows.";
-            Report(Host is null ? why : $"{why} La configuration précédente est gardée.");
+                ? Lang.Pick("Plusieurs AirPods sont appairés : choisis les tiens dans le menu de l'icône → AirPods.",
+                            "Several AirPods are paired: choose yours in the icon menu → AirPods.")
+                : Lang.Pick("Aucun AirPods appairé à ce PC. Appaire-les dans les paramètres Bluetooth de Windows.",
+                            "No AirPods paired with this PC. Pair them in the Windows Bluetooth settings.");
+            Report(Host is null ? why : $"{why} {KeptPrevious}");
             if (Host is null) SetProblem(why);
             return true;
         }
@@ -177,6 +186,18 @@ public sealed class ConfigCoordinator(IConfigSource source, IHeadsetCatalog cata
         TrySave(ReadForUpdate() with { Microphone = on });
     }
 
+    /// <summary>
+    /// Le menu Langue : appliquée tout de suite (les textes affichés se refont sur <see cref="Lang.Changed"/>) et
+    /// enregistrée. Sans effet sur l'hôte.
+    /// </summary>
+    public void SetLanguage(AppLanguage language)
+    {
+        string code = Lang.Code(language);
+        if (Config is not null) Config = Config with { Language = code }; // avant l'écriture, comme SetAutoSwitch
+        TrySave(ReadForUpdate() with { Language = code });
+        Lang.Current = language;
+    }
+
     public void Dispose()
     {
         _service?.Dispose();
@@ -204,10 +225,11 @@ public sealed class ConfigCoordinator(IConfigSource source, IHeadsetCatalog cata
         }
         catch (Exception e)
         {
-            string why = $"ACAW n'a pas pu démarrer : {e.Message}";
-            string message = Host is null ? why : $"{why}. La configuration précédente est gardée.";
+            string why = Lang.Pick($"ACAW n'a pas pu démarrer : {e.Message}", $"ACAW could not start: {e.Message}");
+            string message = Host is null ? why : $"{why}. {KeptPrevious}";
             // Le détail complet une seule fois : les nouveaux essais (toutes les 30 s) n'inondent pas le journal.
-            if (message != _lastProblem) log($"Démarrage impossible avec la nouvelle configuration : {e}");
+            if (message != _lastProblem)
+                log(Lang.Pick($"Démarrage impossible avec la nouvelle configuration : {e}", $"Could not start with the new configuration: {e}"));
             Report(message);
             if (Host is null) SetProblem(why);
             return;
@@ -219,7 +241,7 @@ public sealed class ConfigCoordinator(IConfigSource source, IHeadsetCatalog cata
         Problem = null;
         _lastProblem = null;
         created.Start();
-        log($"Configuration appliquée : {next.Name}");
+        log(Lang.Pick($"Configuration appliquée : {next.Name}", $"Configuration applied: {next.Name}"));
         Changed?.Invoke();
     }
 
@@ -246,9 +268,11 @@ public sealed class ConfigCoordinator(IConfigSource source, IHeadsetCatalog cata
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             // L'application continue avec la configuration en mémoire ; elle sera redemandée au prochain lancement.
-            log($"Configuration non enregistrée : {e.Message}");
+            log(Lang.Pick($"Configuration non enregistrée : {e.Message}", $"Configuration not saved: {e.Message}"));
         }
     }
+
+    private static string KeptPrevious => Lang.Pick("La configuration précédente est gardée.", "The previous configuration is kept.");
 
     private void SetProblem(string why)
     {

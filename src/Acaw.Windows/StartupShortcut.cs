@@ -62,7 +62,7 @@ public sealed class StartupShortcut(string executablePath, string startupFolder,
         var link = (IShellLinkW)new ShellLink();
         link.SetPath(executablePath);
         link.SetWorkingDirectory(Path.GetDirectoryName(executablePath)!);
-        link.SetDescription("ACAW : bascule automatique des AirPods");
+        link.SetDescription(Acaw.Core.Lang.Pick("ACAW : bascule automatique des AirPods", "ACAW: automatic AirPods switching"));
         ((IPersistFile)link).Save(ShortcutPath, true);
     }
 

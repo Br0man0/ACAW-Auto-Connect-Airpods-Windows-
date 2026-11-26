@@ -1,3 +1,4 @@
+using Acaw.Core;
 using System.Drawing.Drawing2D;
 using Acaw.Core.Switching;
 
@@ -20,13 +21,13 @@ internal static class TrayIcons
     {
         string where = state switch
         {
-            SwitchState.OnWindows => "AirPods sur ce PC",
-            SwitchState.Switching => "Connexion des AirPods…",
-            SwitchState.Releasing => "AirPods rendus…",
-            SwitchState.Lost => "AirPods pris par un autre appareil",
-            _ => "AirPods ailleurs ou libres",
+            SwitchState.OnWindows => Lang.Pick("AirPods sur ce PC", "AirPods on this PC"),
+            SwitchState.Switching => Lang.Pick("Connexion des AirPods…", "Connecting the AirPods…"),
+            SwitchState.Releasing => Lang.Pick("AirPods rendus…", "Giving the AirPods back…"),
+            SwitchState.Lost => Lang.Pick("AirPods pris par un autre appareil", "AirPods taken by another device"),
+            _ => Lang.Pick("AirPods ailleurs ou libres", "AirPods elsewhere or idle"),
         };
-        return autoSwitch ? where : $"{where} · bascule suspendue";
+        return autoSwitch ? where : $"{where} · {Lang.Pick("bascule suspendue", "switching paused")}";
     }
 
     private static Icon Draw(Color color)

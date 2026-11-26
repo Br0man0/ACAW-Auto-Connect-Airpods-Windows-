@@ -131,7 +131,7 @@ public sealed class AcawHost : IDisposable
             catch (Exception e)
             {
                 // Une erreur imprévue ne doit jamais arrêter l'application résidente : on la note et on continue.
-                Log($"Erreur en traitant {input} : {e}");
+                Log(Lang.Pick($"Erreur en traitant {input} : {e}", $"Error while processing {input}: {e}"));
             }
         }
         return count;
@@ -190,7 +190,8 @@ public sealed class AcawHost : IDisposable
             case ProfileChange(true):
                 // Garde-fou : si la fin n'est jamais annoncée (erreur pendant l'opération), on relit quand même.
                 _profileSettleAt = _time.GetUtcNow() + MaxProfileChange;
-                if (!_profileChanging) Log("Bascule du profil mains libres : les coupures du casque sont ignorées");
+                if (!_profileChanging) Log(Lang.Pick("Bascule du profil mains libres : les coupures du casque sont ignorées",
+                                                         "Hands-free profile change: headset drop-outs are ignored"));
                 _profileChanging = true;
                 break;
             case ProfileChange(false):
@@ -211,18 +212,19 @@ public sealed class AcawHost : IDisposable
                 ApplyLinkState(link);
                 break;
             case RadarStopped:
-                Log("Écoute BLE arrêtée, nouvel essai dans 10 s");
+                Log(Lang.Pick("Écoute BLE arrêtée, nouvel essai dans 10 s", "BLE listening stopped, retrying in 10 s"));
                 _radarRetryAt = _time.GetUtcNow() + RadarRetryDelay;
                 break;
             case SetAuto(var on):
                 _autoSwitch = on;
-                Log(on ? "Bascule automatique activée" : "Bascule automatique suspendue");
+                Log(on ? Lang.Pick("Bascule automatique activée", "Automatic switching on")
+                       : Lang.Pick("Bascule automatique suspendue", "Automatic switching paused"));
                 // Le tracker n'a rien reçu pendant la pause : on repart de l'état réel des lecteurs.
                 _tracker = new AudioActivityTracker(_options, _time);
                 if (on) Feed(_tracker.OnMediaPlaying(_media.IsPlaying));
                 break;
             case Sync:
-                Log("Synchronisation avec l'état réel");
+                Log(Lang.Pick("Synchronisation avec l'état réel", "Syncing with the actual state"));
                 if (!_speakersRestored)
                 {
                     // Si ACAW s'est arrêté brutalement pendant une coupure (R7), le son revient ici.
@@ -263,7 +265,8 @@ public sealed class AcawHost : IDisposable
     {
         _profileSettleAt = null;
         _profileChanging = false;
-        Log("Bascule du profil mains libres terminée : relecture du casque");
+        Log(Lang.Pick("Bascule du profil mains libres terminée : relecture du casque",
+                     "Hands-free profile change done: re-reading the headset"));
         CheckHeadset();
     }
 
@@ -292,7 +295,8 @@ public sealed class AcawHost : IDisposable
         }
         catch (Exception e)
         {
-            if (!_linkReadFailing) Log($"Liaison radio illisible ({e.GetType().Name} : {e.Message})");
+            if (!_linkReadFailing)
+                Log(Lang.Pick($"Liaison radio illisible ({e.GetType().Name} : {e.Message})", $"Radio link unreadable ({e.GetType().Name}: {e.Message})"));
             _linkReadFailing = true;
             return LinkState.Unknown;
         }
@@ -322,7 +326,8 @@ public sealed class AcawHost : IDisposable
         catch (Exception e)
         {
             // Le type et le code d'erreur aussi : certaines erreurs de Windows arrivent avec un message vide.
-            Log($"Écoute BLE impossible ({e.GetType().Name} 0x{e.HResult:X8} : {e.Message}), nouvel essai dans 10 s");
+            Log(Lang.Pick($"Écoute BLE impossible ({e.GetType().Name} 0x{e.HResult:X8} : {e.Message}), nouvel essai dans 10 s",
+                          $"BLE listening failed ({e.GetType().Name} 0x{e.HResult:X8}: {e.Message}), retrying in 10 s"));
             _radarRetryAt = _time.GetUtcNow() + RadarRetryDelay;
         }
     }
@@ -334,8 +339,8 @@ public sealed class AcawHost : IDisposable
             var before = _machine.State;
             var commands = _machine.Handle(e);
             // La cause d'abord, puis les commandes : le journal se lit dans l'ordre (utile pour les mesures).
-            if (e is not (Tick or AirPodsSeen)) Log($"Événement {e.GetType().Name} ({before} → {_machine.State})");
-            else if (_machine.State != before || commands.Count > 0) Log($"Délai écoulé ({before} → {_machine.State})");
+            if (e is not (Tick or AirPodsSeen)) Log($"{Lang.Pick("Événement", "Event")} {e.GetType().Name} ({before} → {_machine.State})");
+            else if (_machine.State != before || commands.Count > 0) Log($"{Lang.Pick("Délai écoulé", "Timer elapsed")} ({before} → {_machine.State})");
             foreach (var command in commands) Execute(command);
             if (_machine.State != before)
             {
@@ -347,7 +352,7 @@ public sealed class AcawHost : IDisposable
 
     private void Execute(SwitchCommand command)
     {
-        Log($"Commande {command}");
+        Log($"{Lang.Pick("Commande", "Command")} {command}");
         try
         {
             switch (command)
@@ -362,7 +367,7 @@ public sealed class AcawHost : IDisposable
         catch (Exception e)
         {
             // Si l'ordre échoue, la machine attend sa confirmation puis abandonne au bout du délai.
-            Log($"Échec de {command} : {e.Message}");
+            Log(Lang.Pick($"Échec de {command} : {e.Message}", $"{command} failed: {e.Message}"));
         }
     }
 

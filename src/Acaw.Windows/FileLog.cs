@@ -46,7 +46,7 @@ public static class FileLog
             // Si le journal reste en panne, la trace de secours ne doit pas grossir sans fin dans %TEMP%.
             var file = new FileInfo(FallbackPath);
             if (file.Exists && file.Length > MaxSize) return;
-            File.AppendAllText(FallbackPath, $"{line.TrimEnd()}  [journal en panne : {e.GetType().Name} : {e.Message}]{Environment.NewLine}");
+            File.AppendAllText(FallbackPath, $"{line.TrimEnd()}  [{Acaw.Core.Lang.Pick("journal en panne", "log failure")} : {e.GetType().Name} : {e.Message}]{Environment.NewLine}");
         }
         catch (Exception)
         {

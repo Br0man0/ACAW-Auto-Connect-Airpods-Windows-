@@ -29,7 +29,8 @@ public static class ConfigStore
         }
         catch (JsonException e)
         {
-            throw new InvalidDataException($"Configuration illisible ({path}) : {e.Message}", e);
+            throw new InvalidDataException(Lang.Pick($"Configuration illisible ({path}) : {e.Message}",
+                                                    $"Unreadable configuration ({path}): {e.Message}"), e);
         }
 
         // Un délai négatif ferait planter les attentes plus loin : on le refuse ici, avec un message clair.
@@ -38,7 +39,8 @@ public static class ConfigStore
                              o.SoundConfirmDelay, o.SilenceConfirmDelay, o.UnmuteDelay, o.MuteTimeout, o.LinkTimeout,
                              o.StartupWindow, o.StartupReleaseDelay];
         if (delays.Any(d => d < TimeSpan.Zero))
-            throw new InvalidDataException($"Configuration illisible ({path}) : un délai est négatif.");
+            throw new InvalidDataException(Lang.Pick($"Configuration illisible ({path}) : un délai est négatif.",
+                                                    $"Unreadable configuration ({path}): a delay is negative."));
         return config with { Switching = o };
     }
 

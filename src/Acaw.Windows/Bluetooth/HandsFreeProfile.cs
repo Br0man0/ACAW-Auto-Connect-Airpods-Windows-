@@ -1,3 +1,4 @@
+using Acaw.Core;
 using Windows.Win32;
 using Windows.Win32.Devices.Bluetooth;
 using Windows.Win32.Devices.DeviceAndDriverInstallation;
@@ -93,14 +94,16 @@ public static class HandsFreeProfile
     public static string Describe(HandsFreeResult result, bool enabled) => result switch
     {
         HandsFreeResult.Done or HandsFreeResult.AlreadyInState => enabled
-            ? "Micro des AirPods activé : il marche pour les appels, mais chaque bascule prend ~10 s."
-            : "Micro des AirPods retiré : bascules rapides (~2 s).",
+            ? Lang.Pick("Micro des AirPods activé : il marche pour les appels, mais chaque bascule prend ~10 s.",
+                        "AirPods microphone on: it works for calls, but each switch takes ~10 s.")
+            : Lang.Pick("Micro des AirPods retiré : bascules rapides (~2 s).", "AirPods microphone off: fast switching (~2 s)."),
         HandsFreeResult.AccessDenied =>
-            "Windows refuse ce changement sans droits administrateur. Passe par les propriétés Bluetooth des AirPods (control printers → AirPods → Propriétés → Services).",
-        HandsFreeResult.NoRadio => "Bluetooth du PC coupé : active-le, puis réessaie.",
-        HandsFreeResult.NotPaired => "Ces AirPods ne sont plus appairés à ce PC.",
-        HandsFreeResult.NotSupported => "Ces AirPods ne proposent pas le profil mains libres.",
-        _ => "Changement du micro impossible : Windows a renvoyé une erreur.",
+            Lang.Pick("Windows refuse ce changement sans droits administrateur. Passe par les propriétés Bluetooth des AirPods (control printers → AirPods → Propriétés → Services).",
+                      "Windows refuses this change without admin rights. Use the AirPods Bluetooth properties instead (control printers → AirPods → Properties → Services)."),
+        HandsFreeResult.NoRadio => Lang.Pick("Bluetooth du PC coupé : active-le, puis réessaie.", "The PC Bluetooth is off: turn it on, then try again."),
+        HandsFreeResult.NotPaired => Lang.Pick("Ces AirPods ne sont plus appairés à ce PC.", "These AirPods are no longer paired with this PC."),
+        HandsFreeResult.NotSupported => Lang.Pick("Ces AirPods ne proposent pas le profil mains libres.", "These AirPods do not offer the hands-free profile."),
+        _ => Lang.Pick("Changement du micro impossible : Windows a renvoyé une erreur.", "Could not change the microphone: Windows returned an error."),
     };
 
     /// <summary>La décision seule, sur une liste d'identifiants de périphériques : testable sans matériel.</summary>

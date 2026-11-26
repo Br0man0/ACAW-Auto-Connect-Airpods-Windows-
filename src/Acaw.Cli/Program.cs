@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
+using Acaw.Core;
 using Acaw.Core.Ble;
 using Acaw.Core.Config;
 using Acaw.Core.Hosting;
@@ -12,26 +13,53 @@ using Acaw.Windows.Bluetooth;
 
 Console.OutputEncoding = Encoding.UTF8;
 
-const string Usage = """
-    Utilisation : acaw <commande>
-
-      setup [numéro]   choisir les AirPods à piloter (la liste s'affiche sans numéro)
-      status           état des AirPods : connexion à ce PC, éveil, écouteurs portés, batteries
-      switch           amener les AirPods sur ce PC
-      release          rendre les AirPods (l'iPhone les reprend en quelques secondes)
-      startup on|off   démarrer ou non acaw-tray avec Windows (sans argument : l'état actuel)
-      quit             arrêter acaw-tray proprement (le son coupé par ACAW est rétabli)
-      handsfree on|off micro des AirPods (profil mains libres) : on = micro pour les appels, bascules
-                       lentes ; off = bascules rapides (sans argument : l'état actuel)
-      watch            mesure : affiche la liaison radio, la sortie audio et le journal d'ACAW sur
-                       une même ligne de temps (Ctrl+C pour arrêter)
-      --version        la version d'ACAW
-    """;
-const string BluetoothOff = "Bluetooth du PC coupé (ou casque absent pour Windows).";
-
 string configPath = ConfigStore.DefaultPath;
 string? command = args.FirstOrDefault();
 var config = new AcawConfig();
+
+// La langue avant tout message ; config.json absent ou abîmé : celle de Windows.
+try
+{
+    Lang.Current = Lang.Resolve(ConfigStore.Load(configPath).Language);
+}
+catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException)
+{
+    Lang.Current = Lang.FromWindows();
+}
+
+string usage = Lang.Pick("""
+    Utilisation : acaw <commande>
+
+      setup [numéro]     choisir les AirPods à piloter (la liste s'affiche sans numéro)
+      status             état des AirPods : connexion à ce PC, éveil, écouteurs portés, batteries
+      switch             amener les AirPods sur ce PC
+      release            rendre les AirPods (l'iPhone les reprend en quelques secondes)
+      startup on|off     démarrer ou non acaw-tray avec Windows (sans argument : l'état actuel)
+      quit               arrêter acaw-tray proprement (le son coupé par ACAW est rétabli)
+      handsfree on|off   micro des AirPods (profil mains libres) : on = micro pour les appels, bascules
+                         lentes ; off = bascules rapides (sans argument : l'état actuel)
+      language fr|en|auto  langue d'ACAW ; auto = celle de Windows (sans argument : la langue actuelle)
+      watch              mesure : affiche la liaison radio, la sortie audio et le journal d'ACAW sur
+                         une même ligne de temps (Ctrl+C pour arrêter)
+      --version          la version d'ACAW
+    """, """
+    Usage: acaw <command>
+
+      setup [number]     choose the AirPods to drive (lists them without a number)
+      status             AirPods state: connection to this PC, awake, earbuds worn, batteries
+      switch             bring the AirPods to this PC
+      release            give the AirPods back (the iPhone takes them back within seconds)
+      startup on|off     start acaw-tray with Windows or not (no argument: current state)
+      quit               stop acaw-tray cleanly (sound muted by ACAW is restored)
+      handsfree on|off   AirPods microphone (hands-free profile): on = microphone for calls, slow
+                         switching; off = fast switching (no argument: current state)
+      language fr|en|auto  ACAW language; auto = the Windows language (no argument: current language)
+      watch              measurement: shows the radio link, the audio output and the ACAW log on
+                         one timeline (Ctrl+C to stop)
+      --version          the ACAW version
+    """);
+string bluetoothOff = Lang.Pick("Bluetooth du PC coupé (ou casque absent pour Windows).",
+                                "The PC Bluetooth is off (or Windows does not see the headset).");
 
 try
 {
@@ -39,7 +67,7 @@ try
     // (l'installateur s'en sert).
     if (command is "--version" or "version")
     {
-        Console.WriteLine($"ACAW {Acaw.Core.AppInfo.Version}");
+        Console.WriteLine($"ACAW {AppInfo.Version}");
         return 0;
     }
     if (command == "startup") return Startup(args.ElementAtOrDefault(1));
@@ -47,7 +75,8 @@ try
     {
         // Arrêt propre de acaw-tray (son rétabli) ; l'installateur le fait avant de remplacer les fichiers.
         bool stopped = new Acaw.Windows.QuitSignal().Request(TimeSpan.FromSeconds(10));
-        Console.WriteLine(stopped ? "ACAW est arrêté." : "ACAW ne s'est pas arrêté en 10 s.");
+        Console.WriteLine(stopped ? Lang.Pick("ACAW est arrêté.", "ACAW has stopped.")
+                                  : Lang.Pick("ACAW ne s'est pas arrêté en 10 s.", "ACAW did not stop within 10 s."));
         return stopped ? 0 : 2;
     }
 
@@ -59,8 +88,9 @@ try
         "switch" => Switch(),
         "release" => Release(),
         "handsfree" => HandsFree(args.ElementAtOrDefault(1)),
+        "language" => Language(args.ElementAtOrDefault(1)),
         "watch" => Watch(),
-        _ => Fail(Usage),
+        _ => Fail(usage),
     };
 }
 catch (UserError e)
@@ -70,23 +100,26 @@ catch (UserError e)
 }
 catch (InvalidDataException e)
 {
-    Console.WriteLine($"{e.Message}{Environment.NewLine}Relance « acaw setup » pour la recréer.");
+    Console.WriteLine($"{e.Message}{Environment.NewLine}" +
+                      Lang.Pick("Relance « acaw setup » pour la recréer.", "Run \"acaw setup\" again to recreate it."));
     return 1;
 }
 catch (InvalidCastException)
 {
-    Console.WriteLine("Windows refuse l'accès au driver Bluetooth de ce casque (E_NOINTERFACE). " +
-                      "Vérifie que le casque est bien appairé, ou ré-appaire-le.");
+    Console.WriteLine(Lang.Pick(
+        "Windows refuse l'accès au driver Bluetooth de ce casque (E_NOINTERFACE). Vérifie que le casque est bien appairé, ou ré-appaire-le.",
+        "Windows denies access to this headset's Bluetooth driver (E_NOINTERFACE). Check that the headset is paired, or pair it again."));
     return 3;
 }
 catch (COMException e) when (e.HResult == unchecked((int)0x800710DF))
 {
-    Console.WriteLine("Le Bluetooth du PC est indisponible. Active-le dans Paramètres → Bluetooth et appareils.");
+    Console.WriteLine(Lang.Pick("Le Bluetooth du PC est indisponible. Active-le dans Paramètres → Bluetooth et appareils.",
+                                "The PC Bluetooth is unavailable. Turn it on in Settings → Bluetooth & devices."));
     return 3;
 }
 catch (COMException e)
 {
-    Console.WriteLine($"Erreur Windows 0x{e.HResult:X8} : {e.Message}");
+    Console.WriteLine(Lang.Pick($"Erreur Windows 0x{e.HResult:X8} : {e.Message}", $"Windows error 0x{e.HResult:X8}: {e.Message}"));
     return 3;
 }
 
@@ -101,25 +134,55 @@ int Startup(string? action)
         switch (action)
         {
             case "on":
-                if (!File.Exists(tray)) throw new UserError($"acaw-tray.exe introuvable à côté de acaw.exe ({tray}).");
+                if (!File.Exists(tray))
+                    throw new UserError(Lang.Pick($"acaw-tray.exe introuvable à côté de acaw.exe ({tray}).",
+                                                  $"acaw-tray.exe not found next to acaw.exe ({tray})."));
                 shortcut.Set(true);
-                Console.WriteLine($"Démarrage avec Windows activé ({shortcut.ShortcutPath}).");
+                Console.WriteLine(Lang.Pick($"Démarrage avec Windows activé ({shortcut.ShortcutPath}).",
+                                            $"Start with Windows on ({shortcut.ShortcutPath})."));
                 return 0;
             case "off":
                 shortcut.Set(false);
-                Console.WriteLine("Démarrage avec Windows désactivé.");
+                Console.WriteLine(Lang.Pick("Démarrage avec Windows désactivé.", "Start with Windows off."));
                 return 0;
             case null or "status":
-                Console.WriteLine(shortcut.IsEnabled ? "Démarrage avec Windows : activé" : "Démarrage avec Windows : désactivé");
+                Console.WriteLine(shortcut.IsEnabled ? Lang.Pick("Démarrage avec Windows : activé", "Start with Windows: on")
+                                                     : Lang.Pick("Démarrage avec Windows : désactivé", "Start with Windows: off"));
                 return 0;
             default:
-                return Fail(Usage);
+                return Fail(usage);
         }
     }
     catch (Exception e) when (e is IOException or UnauthorizedAccessException)
     {
-        throw new UserError($"Réglage du démarrage impossible : {e.Message}");
+        throw new UserError(Lang.Pick($"Réglage du démarrage impossible : {e.Message}", $"Could not change the startup setting: {e.Message}"));
     }
+}
+
+// Langue d'ACAW, enregistrée dans config.json : l'installateur l'appelle avec le choix fait au début de
+// l'installation. acaw-tray, s'il tourne, relit le fichier et change de langue tout seul.
+int Language(string? choice)
+{
+    if (choice is null or "status")
+    {
+        string setting = config.Language is null ? Lang.Pick(" (celle de Windows)", " (the Windows language)") : "";
+        Console.WriteLine(Lang.Pick($"Langue : français{setting}", $"Language: English{setting}"));
+        return 0;
+    }
+    string? code = choice.ToLowerInvariant() switch
+    {
+        "fr" => "fr",
+        "en" => "en",
+        "auto" => null,
+        _ => "?",
+    };
+    if (code == "?") return Fail(usage);
+
+    new FileConfigSource(configPath).Save(config with { Language = code });
+    Lang.Current = Lang.Resolve(code);
+    string auto = code is null ? Lang.Pick(" (celle de Windows)", " (the Windows language)") : "";
+    Console.WriteLine(Lang.Pick($"Langue enregistrée : français{auto}.", $"Language saved: English{auto}."));
+    return 0;
 }
 
 // Micro des AirPods = profil mains libres. Même code que la case du menu de l'icône ; le choix est retenu
@@ -130,44 +193,53 @@ int HandsFree(string? action)
     if (action is null or "status")
     {
         Console.WriteLine(HandsFreeProfile.IsEnabled(config.Mac!)
-            ? "Micro des AirPods : actif (bascules lentes, ~10 s)"
-            : "Micro des AirPods : retiré (bascules rapides, ~2 s)");
+            ? Lang.Pick("Micro des AirPods : actif (bascules lentes, ~10 s)", "AirPods microphone: on (slow switching, ~10 s)")
+            : Lang.Pick("Micro des AirPods : retiré (bascules rapides, ~2 s)", "AirPods microphone: off (fast switching, ~2 s)"));
         return 0;
     }
-    if (action is not ("on" or "off")) return Fail(Usage);
+    if (action is not ("on" or "off")) return Fail(usage);
 
     bool on = action == "on";
     // acaw-tray, lui, ignore les coupures du lien pendant la bascule ; depuis ici, il ne le sait pas.
     if (Process.GetProcessesByName("acaw-tray").Length > 0)
-        Console.WriteLine("Conseil : ACAW tourne ; la case « Micro des AirPods » de son menu évite qu'il prenne les coupures pour une perte.");
-    Console.Write(on ? "Activation du micro (~3 s)… " : "Retrait du micro (~3 s)… ");
+        Console.WriteLine(Lang.Pick(
+            "Conseil : ACAW tourne ; la case « Micro des AirPods » de son menu évite qu'il prenne les coupures pour une perte.",
+            "Tip: ACAW is running; its \"AirPods microphone\" menu item keeps it from mistaking the drop-outs for a loss."));
+    Console.Write(on ? Lang.Pick("Activation du micro (~3 s)… ", "Turning the microphone on (~3 s)… ")
+                     : Lang.Pick("Retrait du micro (~3 s)… ", "Turning the microphone off (~3 s)… "));
     var outcome = HandsFreeProfile.SetEnabled(config.Mac!, on);
     Console.WriteLine();
     Console.WriteLine(HandsFreeProfile.Describe(outcome.Result, on));
     if (!outcome.Succeeded)
     {
-        Console.WriteLine($"(code Windows {outcome.Code} / 0x{outcome.Code:X8})");
+        Console.WriteLine(Lang.Pick($"(code Windows {outcome.Code} / 0x{outcome.Code:X8})", $"(Windows code {outcome.Code} / 0x{outcome.Code:X8})"));
         return 2;
     }
     new FileConfigSource(configPath).Save(ConfigStore.Load(configPath) with { Microphone = on });
     return 0;
 }
 
-// Mesure de l'étape 0 « bascule suivie » (guide 4, test L) : la liaison radio s'établit-elle nettement avant la
-// sortie audio ? Trois sources, plus le journal d'acaw-tray, sur une seule ligne de temps. Passif : ne commande
-// rien, acaw-tray continue de basculer comme d'habitude.
+// Outil de mesure : la liaison radio s'établit-elle avant la sortie audio ? Trois sources, plus le journal
+// d'acaw-tray, sur une seule ligne de temps. Passif : ne commande rien, acaw-tray continue de basculer.
 int Watch()
 {
     var ep = RequireEndpoint();
     string mac = config.Mac!;
     var gate = new Lock();
     DateTime? reconnectAt = null;
+    string linkWinRt = Lang.Pick("liaison WinRT", "WinRT link");
+    string linkWin32 = Lang.Pick("liaison Win32", "Win32 link");
+    string audioOut = Lang.Pick("sortie audio", "audio output");
+    string micOut = Lang.Pick("micro (HFP)", "mic (HFP)");
+    string journal = Lang.Pick("journal", "log");
 
     void Print(DateTime at, string source, string text)
     {
         lock (gate)
         {
-            string since = reconnectAt is { } t && at >= t ? $"   [+{(at - t).TotalSeconds:F2} s depuis Reconnect]" : "";
+            string since = reconnectAt is { } t && at >= t
+                ? Lang.Pick($"   [+{(at - t).TotalSeconds:F2} s depuis Reconnect]", $"   [+{(at - t).TotalSeconds:F2} s since Reconnect]")
+                : "";
             Console.WriteLine($"{at:HH:mm:ss.fff}  {source,-16}{text}{since}");
         }
     }
@@ -177,14 +249,15 @@ int Watch()
         .FromBluetoothAddressAsync(HandsFreeProfile.ParseAddress(mac)).AsTask().GetAwaiter().GetResult();
     if (device is not null)
     {
-        Print(DateTime.Now, "liaison WinRT", $"{device.ConnectionStatus} (départ)");
-        device.ConnectionStatusChanged += (d, _) => Print(DateTime.Now, "liaison WinRT", d.ConnectionStatus.ToString());
+        Print(DateTime.Now, linkWinRt, $"{device.ConnectionStatus} ({Lang.Pick("départ", "start")})");
+        device.ConnectionStatusChanged += (d, _) => Print(DateTime.Now, linkWinRt, d.ConnectionStatus.ToString());
     }
-    else Print(DateTime.Now, "liaison WinRT", "appareil introuvable pour WinRT");
+    else Print(DateTime.Now, linkWinRt, Lang.Pick("appareil introuvable pour WinRT", "device not found by WinRT"));
 
     using var stop = new CancellationTokenSource();
     Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
-    Console.WriteLine($"Mesure en cours pour {ep.Name}. Fais tes bascules ; Ctrl+C pour arrêter.");
+    Console.WriteLine(Lang.Pick($"Mesure en cours pour {ep.Name}. Fais tes bascules ; Ctrl+C pour arrêter.",
+                                $"Measuring {ep.Name}. Do your switches; Ctrl+C to stop."));
 
     // 2 et 3. La liaison selon Win32 et la sortie audio, relevées toutes les 50 ms. Plus le journal d'acaw-tray.
     long journalAt = File.Exists(Acaw.Windows.FileLog.Path) ? new FileInfo(Acaw.Windows.FileLog.Path).Length : 0;
@@ -196,17 +269,24 @@ int Watch()
     bool micEnabled = false;
     string lastMic = "";
     int turn = 0;
+    string micOff = Lang.Pick("profil retiré", "profile off");
+    string micHidden = Lang.Pick("profil activé (sortie audio invisible)", "profile on (audio output not visible)");
     while (!stop.IsCancellationRequested)
     {
         bool? link = BluetoothLink.IsConnected(mac);
         if (first || link != lastLink)
-            Print(DateTime.Now, "liaison Win32", link switch { true => "connectée", false => "déconnectée", null => "illisible" });
+            Print(DateTime.Now, linkWin32, link switch
+            {
+                true => Lang.Pick("connectée", "connected"),
+                false => Lang.Pick("déconnectée", "disconnected"),
+                null => Lang.Pick("illisible", "unreadable"),
+            });
         lastLink = link;
 
         HeadsetState audio;
         try { audio = BluetoothAudio.GetState(ep.Id); }
         catch (COMException) { audio = HeadsetState.Absent; }
-        if (first || audio != lastAudio) Print(DateTime.Now, "sortie audio", audio.ToString());
+        if (first || audio != lastAudio) Print(DateTime.Now, audioOut, audio.ToString());
         lastAudio = audio;
 
         // Le micro (profil mains libres) : recherché chaque seconde, car il apparaît et disparaît avec la case.
@@ -219,12 +299,12 @@ int Watch()
         string mic;
         try
         {
-            mic = !micEnabled ? "profil retiré"
-                : handsFree is null ? "profil activé (sortie audio invisible)"
+            mic = !micEnabled ? micOff
+                : handsFree is null ? micHidden
                 : BluetoothAudio.GetState(handsFree.Id).ToString();
         }
-        catch (COMException) { mic = "profil activé (sortie audio invisible)"; handsFree = null; }
-        if (first || mic != lastMic) Print(DateTime.Now, "micro (HFP)", mic);
+        catch (COMException) { mic = micHidden; handsFree = null; }
+        if (first || mic != lastMic) Print(DateTime.Now, micOut, mic);
         lastMic = mic;
         first = false;
 
@@ -232,12 +312,13 @@ int Watch()
         {
             DateTime at = DateTime.TryParseExact(line.AsSpan(0, Math.Min(23, line.Length)), "yyyy-MM-dd HH:mm:ss.fff",
                 CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) ? parsed : DateTime.Now;
-            if (line.Contains("Commande Reconnect", StringComparison.Ordinal))
+            // Le journal peut être dans l'une ou l'autre langue (acaw-tray a pu changer de langue entre-temps).
+            if (line.Contains("Commande Reconnect", StringComparison.Ordinal) || line.Contains("Command Reconnect", StringComparison.Ordinal))
             {
                 lock (gate) reconnectAt = at;
                 Console.WriteLine("──────────────────────────────────────────────────────────────");
             }
-            Print(at, "journal", line.Length > 25 ? line[25..] : line);
+            Print(at, journal, line.Length > 25 ? line[25..] : line);
         });
         stop.Token.WaitHandle.WaitOne(50);
     }
@@ -272,36 +353,40 @@ int Setup(string? choice)
 {
     var headsets = BluetoothAudio.ListEndpoints().Where(ep => ep.IsA2dp && ep.Mac is not null).ToList();
     if (headsets.Count == 0)
-        throw new UserError("Aucun casque Bluetooth appairé. Appaire d'abord les AirPods dans les paramètres Windows.");
+        throw new UserError(Lang.Pick("Aucun casque Bluetooth appairé. Appaire d'abord les AirPods dans les paramètres Windows.",
+                                      "No Bluetooth headset paired. Pair the AirPods in the Windows settings first."));
 
     if (choice is null)
     {
         for (int i = 0; i < headsets.Count; i++)
-            Console.WriteLine($"  {i + 1}. {headsets[i].Name}  (modèle {headsets[i].ModelId ?? "?"})");
-        Console.Write("Numéro des AirPods à piloter : ");
+            Console.WriteLine($"  {i + 1}. {headsets[i].Name}  ({Lang.Pick("modèle", "model")} {headsets[i].ModelId ?? "?"})");
+        Console.Write(Lang.Pick("Numéro des AirPods à piloter : ", "Number of the AirPods to drive: "));
         choice = Console.ReadLine();
     }
 
     if (!int.TryParse(choice, CultureInfo.InvariantCulture, out int n) || n < 1 || n > headsets.Count)
-        throw new UserError($"Choix invalide : indique un numéro entre 1 et {headsets.Count}.");
+        throw new UserError(Lang.Pick($"Choix invalide : indique un numéro entre 1 et {headsets.Count}.",
+                                      $"Invalid choice: enter a number between 1 and {headsets.Count}."));
 
     var chosen = headsets[n - 1];
     ConfigStore.Save(configPath, config with { Mac = chosen.Mac, ModelId = chosen.ModelId, Name = chosen.Name });
-    Console.WriteLine($"Enregistré : {chosen.Name}. Configuration dans {configPath}");
+    Console.WriteLine(Lang.Pick($"Enregistré : {chosen.Name}. Configuration dans {configPath}",
+                                $"Saved: {chosen.Name}. Configuration in {configPath}"));
     return 0;
 }
 
 int Status()
 {
     var ep = RequireEndpoint();
-    Console.WriteLine($"AirPods : {ep.Name} (modèle {config.ModelId})");
-    Console.WriteLine($"Sur ce PC : {Describe(BluetoothAudio.GetState(ep.Id))}");
+    Console.WriteLine($"AirPods : {ep.Name} ({Lang.Pick("modèle", "model")} {config.ModelId})");
+    Console.WriteLine($"{Lang.Pick("Sur ce PC", "On this PC")} : {Describe(BluetoothAudio.GetState(ep.Id))}");
     Console.WriteLine(HandsFreeProfile.IsEnabled(config.Mac!)
-        ? "Profil mains libres : ACTIF → bascules lentes (10 s). Pour le retirer : menu de l'icône ACAW → Micro des AirPods, ou « acaw handsfree off »"
-        : "Profil mains libres : retiré (bien)");
+        ? Lang.Pick("Profil mains libres : ACTIF → bascules lentes (10 s). Pour le retirer : menu de l'icône ACAW → Micro des AirPods, ou « acaw handsfree off »",
+                    "Hands-free profile: ON → slow switching (10 s). To turn it off: ACAW icon menu → AirPods microphone, or \"acaw handsfree off\"")
+        : Lang.Pick("Profil mains libres : retiré (bien)", "Hands-free profile: off (good)"));
 
     if (config.ModelNumber is not { } model) return 0;
-    Console.Write("Écoute BLE pendant 5 s… ");
+    Console.Write(Lang.Pick("Écoute BLE pendant 5 s… ", "Listening to BLE for 5 s… "));
     ProximityFrame? last = null;
     using (var scanner = new BleScanner(model))
     {
@@ -313,11 +398,13 @@ int Status()
     Console.WriteLine();
     if (last is null)
     {
-        Console.WriteLine("Éveillés : non détectés (boîtier fermé ou hors de portée)");
+        Console.WriteLine(Lang.Pick("Éveillés : non détectés (boîtier fermé ou hors de portée)", "Awake: not detected (case closed or out of range)"));
         return 0;
     }
-    Console.WriteLine($"Éveillés : oui · écouteurs portés : {last.PodsInEar} · dans le boîtier : {last.PodsInCase}");
-    Console.WriteLine($"Batteries : écouteurs {Pct(last.BatteryA)} / {Pct(last.BatteryB)} · boîtier {Pct(last.CaseBattery)}");
+    Console.WriteLine(Lang.Pick($"Éveillés : oui · écouteurs portés : {last.PodsInEar} · dans le boîtier : {last.PodsInCase}",
+                                $"Awake: yes · earbuds worn: {last.PodsInEar} · in the case: {last.PodsInCase}"));
+    Console.WriteLine(Lang.Pick($"Batteries : écouteurs {Pct(last.BatteryA)} / {Pct(last.BatteryB)} · boîtier {Pct(last.CaseBattery)}",
+                                $"Batteries: earbuds {Pct(last.BatteryA)} / {Pct(last.BatteryB)} · case {Pct(last.CaseBattery)}"));
     return 0;
 }
 
@@ -325,13 +412,13 @@ int Switch()
 {
     var ep = RequireEndpoint();
     var state = BluetoothAudio.GetState(ep.Id);
-    if (state == HeadsetState.Connected) throw new UserError("Les AirPods sont déjà sur ce PC.");
-    if (state == HeadsetState.Absent) throw new UserError(BluetoothOff);
+    if (state == HeadsetState.Connected) throw new UserError(Lang.Pick("Les AirPods sont déjà sur ce PC.", "The AirPods are already on this PC."));
+    if (state == HeadsetState.Absent) throw new UserError(bluetoothOff);
 
     var (ok, elapsed) = SendAndWait(ep, BluetoothAudio.Connect, s => s == HeadsetState.Connected);
     Console.WriteLine(ok
-        ? $"AirPods sur ce PC en {elapsed.TotalMilliseconds:F0} ms."
-        : "Les AirPods ne sont pas venus. Boîtier fermé ou hors de portée ?");
+        ? Lang.Pick($"AirPods sur ce PC en {elapsed.TotalMilliseconds:F0} ms.", $"AirPods on this PC in {elapsed.TotalMilliseconds:F0} ms.")
+        : Lang.Pick("Les AirPods ne sont pas venus. Boîtier fermé ou hors de portée ?", "The AirPods did not come. Case closed or out of range?"));
     return ok ? 0 : 2;
 }
 
@@ -339,13 +426,15 @@ int Release()
 {
     var ep = RequireEndpoint();
     if (BluetoothAudio.GetState(ep.Id) != HeadsetState.Connected)
-        throw new UserError("Les AirPods ne sont pas sur ce PC.");
+        throw new UserError(Lang.Pick("Les AirPods ne sont pas sur ce PC.", "The AirPods are not on this PC."));
 
     var (ok, _) = SendAndWait(ep, BluetoothAudio.Disconnect, s => s != HeadsetState.Connected);
-    // Le micro, s'il est activé, garderait les AirPods accrochés au PC (tests L3 et H9).
+    // Le micro, s'il est activé, garderait les AirPods accrochés au PC.
     if (BluetoothAudio.ReleaseHandsFree(config.Mac!) is { } code && code != 0)
-        Console.WriteLine($"Relâche du micro refusée (code Windows {code}) : l'iPhone pourrait ne pas reprendre les AirPods.");
-    Console.WriteLine(ok ? "AirPods rendus : l'iPhone va les reprendre." : "Les AirPods sont toujours connectés.");
+        Console.WriteLine(Lang.Pick($"Relâche du micro refusée (code Windows {code}) : l'iPhone pourrait ne pas reprendre les AirPods.",
+                                    $"Microphone release refused (Windows code {code}): the iPhone may not take the AirPods back."));
+    Console.WriteLine(ok ? Lang.Pick("AirPods rendus : l'iPhone va les reprendre.", "AirPods given back: the iPhone will take them back.")
+                         : Lang.Pick("Les AirPods sont toujours connectés.", "The AirPods are still connected."));
     return ok ? 0 : 2;
 }
 
@@ -373,23 +462,25 @@ AcawConfig LoadConfig()
     }
     catch (InvalidDataException) when (command == "setup")
     {
-        Console.WriteLine("Configuration illisible : elle va être remplacée.");
+        Console.WriteLine(Lang.Pick("Configuration illisible : elle va être remplacée.", "Unreadable configuration: it will be replaced."));
         return new AcawConfig();
     }
 }
 
 BtEndpoint RequireEndpoint()
 {
-    if (!config.IsConfigured) throw new UserError("Aucun AirPods configuré. Lance d'abord « acaw setup ».");
+    if (!config.IsConfigured)
+        throw new UserError(Lang.Pick("Aucun AirPods configuré. Lance d'abord « acaw setup ».", "No AirPods configured. Run \"acaw setup\" first."));
     return BluetoothAudio.FindA2dp(config.Mac!)
-        ?? throw new UserError($"{config.Name} n'est plus appairé à ce PC. Ré-appaire-le puis relance « acaw setup ».");
+        ?? throw new UserError(Lang.Pick($"{config.Name} n'est plus appairé à ce PC. Ré-appaire-le puis relance « acaw setup ».",
+                                         $"{config.Name} is no longer paired with this PC. Pair it again, then run \"acaw setup\" again."));
 }
 
-static string Describe(HeadsetState state) => state switch
+string Describe(HeadsetState state) => state switch
 {
-    HeadsetState.Connected => "connectés",
-    HeadsetState.Disconnected => "non (ailleurs ou libres)",
-    _ => BluetoothOff,
+    HeadsetState.Connected => Lang.Pick("connectés", "connected"),
+    HeadsetState.Disconnected => Lang.Pick("non (ailleurs ou libres)", "no (elsewhere or idle)"),
+    _ => bluetoothOff,
 };
 
 static string Pct(int? value) => value is null ? "—" : $"{value} %";

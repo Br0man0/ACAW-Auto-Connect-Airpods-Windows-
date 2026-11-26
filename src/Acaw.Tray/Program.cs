@@ -1,3 +1,5 @@
+using Acaw.Core;
+using Acaw.Core.Config;
 using Acaw.Windows;
 
 namespace Acaw.Tray;
@@ -10,11 +12,15 @@ internal static class Program
     {
         // Une seule icône à la fois : si ACAW tourne déjà (lancé au démarrage, puis à la main), on s'arrête.
         using var single = new Mutex(initiallyOwned: true, @"Local\ACAW", out bool first);
+        // La langue avant la première ligne du journal ; le coordinateur la réappliquera à chaque relecture.
+        Lang.Current = ReadLanguage();
         // Le temps depuis le démarrage de Windows distingue un lancement à l'ouverture de session d'un lancement à la main.
         var uptime = TimeSpan.FromMilliseconds(Environment.TickCount64);
+        string since = $"{(int)uptime.TotalHours} h {uptime.Minutes:D2} min {uptime.Seconds:D2} s";
         FileLog.Write(first
-            ? $"Lancement d'ACAW {Acaw.Core.AppInfo.Version} : {Application.ExecutablePath} (Windows démarré il y a {(int)uptime.TotalHours} h {uptime.Minutes:D2} min {uptime.Seconds:D2} s)"
-            : "ACAW tourne déjà : ce second lancement s'arrête");
+            ? Lang.Pick($"Lancement d'ACAW {AppInfo.Version} : {Application.ExecutablePath} (Windows démarré il y a {since})",
+                        $"Starting ACAW {AppInfo.Version}: {Application.ExecutablePath} (Windows started {since} ago)")
+            : Lang.Pick("ACAW tourne déjà : ce second lancement s'arrête", "ACAW is already running: this second launch stops"));
         if (!first) return;
 
         ApplicationConfiguration.Initialize();
@@ -22,5 +28,18 @@ internal static class Program
         // Application.Run ne le fait pas tout seul.
         using var app = new TrayApp();
         Application.Run(app);
+    }
+
+    // config.json absent ou abîmé : la langue de Windows (le coordinateur signalera le problème ensuite).
+    private static AppLanguage ReadLanguage()
+    {
+        try
+        {
+            return Lang.Resolve(ConfigStore.Load(ConfigStore.DefaultPath).Language);
+        }
+        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            return Lang.FromWindows();
+        }
     }
 }

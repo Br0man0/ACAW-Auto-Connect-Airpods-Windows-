@@ -31,13 +31,19 @@ internal sealed class TrayApp : ApplicationContext
     private readonly NotifyIcon _icon = new() { Visible = true };
     private readonly ContextMenuStrip _menu = new();
     private readonly ToolStripMenuItem _status = new() { Enabled = false };
-    private readonly ToolStripMenuItem _take = new("Amener sur ce PC");
-    private readonly ToolStripMenuItem _release = new("Rendre à l'iPhone");
+    // Les textes sont posés par ApplyTexts, dans la langue en cours, et refaits quand elle change.
+    private readonly ToolStripMenuItem _take = new();
+    private readonly ToolStripMenuItem _release = new();
     private readonly ToolStripMenuItem _airPods = new("AirPods");
-    private readonly ToolStripMenuItem _auto = new("Bascule automatique") { CheckOnClick = true };
-    private readonly ToolStripMenuItem _startup = new("Démarrer avec Windows") { CheckOnClick = true };
-    private const string MicText = "Micro des AirPods (appels)";
-    private readonly ToolStripMenuItem _mic = new(MicText);
+    private readonly ToolStripMenuItem _auto = new() { CheckOnClick = true };
+    private readonly ToolStripMenuItem _startup = new() { CheckOnClick = true };
+    private readonly ToolStripMenuItem _mic = new();
+    private readonly ToolStripMenuItem _language = new("Langue / Language");
+    private readonly ToolStripMenuItem _french = new("Français");
+    private readonly ToolStripMenuItem _english = new("English");
+    private readonly ToolStripMenuItem _openLog = new();
+    private readonly ToolStripMenuItem _exit = new();
+    private static string MicText => Lang.Pick("Micro des AirPods (appels)", "AirPods microphone (calls)");
     private bool _micBusy;               // activation ou retrait du micro en cours (~3 s)
     private Action? _balloonAction;      // ce que fait un clic sur la notification affichée
     private readonly Control _ui = new(); // sert à revenir sur le thread de l'interface depuis l'hôte ou le fichier
@@ -62,6 +68,7 @@ internal sealed class TrayApp : ApplicationContext
         _coordinator.Changed += OnCoordinatorChanged;
         _coordinator.Notice += message => ShowBalloon("ACAW", message, ToolTipIcon.Info);
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
+        Lang.Changed += OnLanguageChanged;
 
         try
         {
@@ -71,7 +78,7 @@ internal sealed class TrayApp : ApplicationContext
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
         {
             // Sans surveillance, ACAW marche quand même : il faudra le relancer après une modification à la main.
-            FileLog.Write($"Surveillance de config.json impossible : {e.Message}");
+            FileLog.Write(Lang.Pick($"Surveillance de config.json impossible : {e.Message}", $"Cannot watch config.json: {e.Message}"));
         }
 
         // « acaw quit » (l'installateur) demande un arrêt propre : comme le menu « Quitter ».
@@ -83,7 +90,7 @@ internal sealed class TrayApp : ApplicationContext
         _lockedRetry.Tick += (_, _) => { _lockedRetry.Stop(); RefreshConfig(); };
         _retry.Start();
 
-        FileLog.Write("Lecture de la configuration…");
+        FileLog.Write(Lang.Pick("Lecture de la configuration…", "Reading the configuration…"));
         RefreshConfig();
     }
 
@@ -92,6 +99,7 @@ internal sealed class TrayApp : ApplicationContext
         if (disposing)
         {
             SystemEvents.PowerModeChanged -= OnPowerModeChanged; // événement statique : à retirer sinon fuite
+            Lang.Changed -= OnLanguageChanged;                  // idem
             _quitWait.Unregister(null);
             _quit.Dispose();
             _watcher?.Dispose(); // d'abord : plus aucune relecture ne doit arriver pendant l'arrêt
@@ -116,6 +124,11 @@ internal sealed class TrayApp : ApplicationContext
         _airPods.DropDownItems.Add("…"); // sans élément, Windows n'affiche pas la flèche du sous-menu
         _airPods.DropDownOpening += (_, _) => FillAirPodsMenu();
         _mic.Click += (_, _) => ToggleMicrophone(!_mic.Checked);
+        _french.Click += (_, _) => Safely(() => _coordinator.SetLanguage(AppLanguage.French));
+        _english.Click += (_, _) => Safely(() => _coordinator.SetLanguage(AppLanguage.English));
+        _language.DropDownItems.AddRange([_french, _english]);
+        _openLog.Click += (_, _) => OpenLog();
+        _exit.Click += (_, _) => ExitThread();
         // Pas d'effacement à la fermeture : sous Windows 11, une bulle expirée reste dans le centre de
         // notifications (Win + N) et peut être cliquée plus tard. Seule la notification suivante la remplace.
         _icon.BalloonTipClicked += (_, _) =>
@@ -136,10 +149,11 @@ internal sealed class TrayApp : ApplicationContext
             _mic,
             _auto,
             _startup,
-            new ToolStripMenuItem("Ouvrir le journal", null, (_, _) => OpenLog()),
+            _language,
+            _openLog,
             new ToolStripSeparator(),
             new ToolStripMenuItem($"ACAW {AppInfo.Version}") { Enabled = false },
-            new ToolStripMenuItem("Quitter", null, (_, _) => ExitThread()),
+            _exit,
         ]);
         _menu.Opening += (_, _) =>
         {
@@ -151,14 +165,39 @@ internal sealed class TrayApp : ApplicationContext
         _icon.ContextMenuStrip = _menu;
         _icon.Icon = TrayIcons.For(SwitchState.Away, autoSwitch: false);
         _icon.Text = "ACAW";
-        _status.Text = "Démarrage…";
+        ApplyTexts();
+        _status.Text = Lang.Pick("Démarrage…", "Starting…");
     }
+
+    // Tous les textes fixes du menu, dans la langue en cours. Ceux qui dépendent de l'état (statut, info-bulle) sont
+    // refaits par Render.
+    private void ApplyTexts()
+    {
+        _take.Text = Lang.Pick("Amener sur ce PC", "Bring to this PC");
+        _release.Text = Lang.Pick("Rendre à l'iPhone", "Give back to the iPhone");
+        _auto.Text = Lang.Pick("Bascule automatique", "Automatic switching");
+        _startup.Text = Lang.Pick("Démarrer avec Windows", "Start with Windows");
+        if (!_micBusy) _mic.Text = MicText;
+        _openLog.Text = Lang.Pick("Ouvrir le journal", "Open the log");
+        _exit.Text = Lang.Pick("Quitter", "Quit");
+        _french.Checked = Lang.Current == AppLanguage.French;
+        _english.Checked = Lang.Current == AppLanguage.English;
+    }
+
+    // Peut être levé depuis un autre thread : tout est ramené sur celui de l'interface.
+    private void OnLanguageChanged() => _ui.BeginInvoke(() =>
+    {
+        ApplyTexts();
+        if (_coordinator.Host is null) RefreshConfig(); // « pourquoi ACAW ne tourne pas », dans la nouvelle langue
+        Render();
+    });
 
     private void RefreshConfig() => Safely(() =>
     {
         if (_coordinator.Refresh()) _lockedRetries = 0;
         else if (++_lockedRetries <= MaxLockedRetries) _lockedRetry.Start();
-        else if (_lockedRetries == MaxLockedRetries + 1) FileLog.Write("config.json reste verrouillé : relu à la prochaine modification");
+        else if (_lockedRetries == MaxLockedRetries + 1)
+            FileLog.Write(Lang.Pick("config.json reste verrouillé : relu à la prochaine modification", "config.json stays locked: re-read on the next change"));
     });
 
     // Le sous-menu « AirPods » est rempli à chaque ouverture : un casque a pu être appairé entre-temps.
@@ -167,7 +206,7 @@ internal sealed class TrayApp : ApplicationContext
         _airPods.DropDownItems.Clear();
         var candidates = _coordinator.Candidates();
         if (candidates.Count == 0)
-            _airPods.DropDownItems.Add(new ToolStripMenuItem("Aucun AirPods appairé à ce PC") { Enabled = false });
+            _airPods.DropDownItems.Add(new ToolStripMenuItem(Lang.Pick("Aucun AirPods appairé à ce PC", "No AirPods paired with this PC")) { Enabled = false });
         foreach (var headset in candidates)
         {
             var item = new ToolStripMenuItem(headset.Name)
@@ -178,7 +217,7 @@ internal sealed class TrayApp : ApplicationContext
             _airPods.DropDownItems.Add(item);
         }
         _airPods.DropDownItems.Add(new ToolStripSeparator());
-        _airPods.DropDownItems.Add(new ToolStripMenuItem("Paramètres Bluetooth…", null, (_, _) =>
+        _airPods.DropDownItems.Add(new ToolStripMenuItem(Lang.Pick("Paramètres Bluetooth…", "Bluetooth settings…"), null, (_, _) =>
             Process.Start(new ProcessStartInfo("ms-settings:bluetooth") { UseShellExecute = true })));
     });
 
@@ -193,7 +232,7 @@ internal sealed class TrayApp : ApplicationContext
             _subscribedHost = host;
             if (host is not null)
             {
-                FileLog.Write($"ACAW démarré pour {_coordinator.Config!.Name}");
+                FileLog.Write(Lang.Pick($"ACAW démarré pour {_coordinator.Config!.Name}", $"ACAW started for {_coordinator.Config!.Name}"));
                 WarnIfHandsFree(_coordinator.Config.Mac!);
             }
         }
@@ -211,15 +250,18 @@ internal sealed class TrayApp : ApplicationContext
         }
         catch (Exception e)
         {
-            FileLog.Write($"Vérification du profil mains libres impossible : {e.Message}");
+            FileLog.Write(Lang.Pick($"Vérification du profil mains libres impossible : {e.Message}", $"Cannot check the hands-free profile: {e.Message}"));
             return;
         }
         if (!active) return;
-        FileLog.Write("Profil mains libres actif : chaque bascule prendra ~10 s au lieu de ~2 s");
+        FileLog.Write(Lang.Pick("Profil mains libres actif : chaque bascule prendra ~10 s au lieu de ~2 s",
+                                "Hands-free profile active: each switch will take ~10 s instead of ~2 s"));
         if (_coordinator.Config?.Microphone == true) return; // activé exprès depuis ACAW : pas d'avertissement
-        ShowBalloon("ACAW : bascules lentes",
-            "Le micro des AirPods (profil « mains libres ») est actif : chaque bascule prend ~10 s au lieu de 2. " +
-            "Clique ici pour le retirer, ou garde-le pour les appels (menu → Micro des AirPods).",
+        ShowBalloon(Lang.Pick("ACAW : bascules lentes", "ACAW: slow switching"),
+            Lang.Pick("Le micro des AirPods (profil « mains libres ») est actif : chaque bascule prend ~10 s au lieu de 2. " +
+                      "Clique ici pour le retirer, ou garde-le pour les appels (menu → Micro des AirPods).",
+                      "The AirPods microphone (hands-free profile) is on: each switch takes ~10 s instead of 2. " +
+                      "Click here to turn it off, or keep it for calls (menu → AirPods microphone)."),
             ToolTipIcon.Warning, onClick: () => ToggleMicrophone(on: false));
     }
 
@@ -235,7 +277,7 @@ internal sealed class TrayApp : ApplicationContext
         }
         catch (Exception e)
         {
-            FileLog.Write($"Lecture du profil mains libres impossible : {e.Message}");
+            FileLog.Write(Lang.Pick($"Lecture du profil mains libres impossible : {e.Message}", $"Cannot read the hands-free profile: {e.Message}"));
         }
     }
 
@@ -247,8 +289,10 @@ internal sealed class TrayApp : ApplicationContext
         var host = _coordinator.Host;
         _micBusy = true;
         _mic.Enabled = false;
-        _mic.Text = on ? "Micro des AirPods : activation…" : "Micro des AirPods : retrait…";
-        FileLog.Write(on ? "Micro des AirPods : activation demandée" : "Micro des AirPods : retrait demandé");
+        _mic.Text = on ? Lang.Pick("Micro des AirPods : activation…", "AirPods microphone: turning on…")
+                       : Lang.Pick("Micro des AirPods : retrait…", "AirPods microphone: turning off…");
+        FileLog.Write(on ? Lang.Pick("Micro des AirPods : activation demandée", "AirPods microphone: turning on requested")
+                         : Lang.Pick("Micro des AirPods : retrait demandé", "AirPods microphone: turning off requested"));
         host?.BeginProfileChange();
 
         Task.Run(() => HandsFreeProfile.SetEnabled(mac, on)).ContinueWith(task => _ui.BeginInvoke(() =>
@@ -259,12 +303,14 @@ internal sealed class TrayApp : ApplicationContext
             _mic.Enabled = true;
             if (task.Exception is { } e)
             {
-                FileLog.Write($"Micro des AirPods : erreur {e.InnerException}");
-                ShowBalloon("ACAW", "Changement du micro impossible (détail dans le journal).", ToolTipIcon.Warning);
+                FileLog.Write(Lang.Pick($"Micro des AirPods : erreur {e.InnerException}", $"AirPods microphone: error {e.InnerException}"));
+                ShowBalloon("ACAW", Lang.Pick("Changement du micro impossible (détail dans le journal).",
+                                              "Could not change the microphone (details in the log)."), ToolTipIcon.Warning);
                 return;
             }
             var outcome = task.Result;
-            FileLog.Write($"Micro des AirPods : {outcome.Result} (code Windows {outcome.Code})");
+            FileLog.Write(Lang.Pick($"Micro des AirPods : {outcome.Result} (code Windows {outcome.Code})",
+                                    $"AirPods microphone: {outcome.Result} (Windows code {outcome.Code})"));
             if (outcome.Succeeded) Safely(() => _coordinator.SetMicrophone(on));
             ShowBalloon("ACAW", HandsFreeProfile.Describe(outcome.Result, on),
                         outcome.Succeeded ? ToolTipIcon.Info : ToolTipIcon.Warning);
@@ -288,7 +334,7 @@ internal sealed class TrayApp : ApplicationContext
         if (host is null)
         {
             // ACAW ne peut pas fonctionner : on garde l'icône (AirPods, journal, Quitter) et on dit pourquoi.
-            string why = _coordinator.Problem ?? "Non configuré";
+            string why = _coordinator.Problem ?? Lang.Pick("Non configuré", "Not configured");
             _status.Text = why;
             _icon.Text = why.Length <= 127 ? why : why[..127];
             _icon.Icon = TrayIcons.For(SwitchState.Away, autoSwitch: false);
@@ -328,7 +374,7 @@ internal sealed class TrayApp : ApplicationContext
         catch (Exception e) when (IsStartupFailure(e))
         {
             _startup.Checked = _startupShortcut.IsEnabled;
-            ShowBalloon("ACAW", $"Réglage impossible : {e.Message}", ToolTipIcon.Warning);
+            ShowBalloon("ACAW", Lang.Pick($"Réglage impossible : {e.Message}", $"Setting failed: {e.Message}"), ToolTipIcon.Warning);
         }
     }
 
@@ -336,7 +382,7 @@ internal sealed class TrayApp : ApplicationContext
     private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
     {
         if (e.Mode != PowerModes.Resume) return;
-        FileLog.Write("Sortie de veille");
+        FileLog.Write(Lang.Pick("Sortie de veille", "Resumed from sleep"));
         _ui.BeginInvoke(() => _coordinator.Host?.OnResumed());
     }
 
@@ -349,13 +395,13 @@ internal sealed class TrayApp : ApplicationContext
         }
         catch (Exception e)
         {
-            FileLog.Write($"Erreur inattendue : {e}");
+            FileLog.Write(Lang.Pick($"Erreur inattendue : {e}", $"Unexpected error: {e}"));
         }
     }
 
     private static void OpenLog()
     {
-        if (!File.Exists(FileLog.Path)) FileLog.Write("Journal créé");
+        if (!File.Exists(FileLog.Path)) FileLog.Write(Lang.Pick("Journal créé", "Log created"));
         Process.Start(new ProcessStartInfo(FileLog.Path) { UseShellExecute = true });
     }
 
@@ -398,7 +444,7 @@ internal sealed class TrayApp : ApplicationContext
             }
             catch (Exception e)
             {
-                FileLog.Write($"Rétablissement du son impossible : {e.Message}");
+                FileLog.Write(Lang.Pick($"Rétablissement du son impossible : {e.Message}", $"Cannot restore the sound: {e.Message}"));
             }
         }
     }
