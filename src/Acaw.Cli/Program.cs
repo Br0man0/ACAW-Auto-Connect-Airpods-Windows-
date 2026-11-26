@@ -1,5 +1,4 @@
 // ACAW en ligne de commande. La bascule automatique est faite par acaw-tray.exe.
-// Mode d'emploi : docs/guide/06-utiliser-acaw.md
 
 using System.Diagnostics;
 using System.Globalization;
@@ -298,7 +297,7 @@ int Status()
     Console.WriteLine($"AirPods : {ep.Name} (modèle {config.ModelId})");
     Console.WriteLine($"Sur ce PC : {Describe(BluetoothAudio.GetState(ep.Id))}");
     Console.WriteLine(HandsFreeProfile.IsEnabled(config.Mac!)
-        ? "Profil mains libres : ACTIF → bascules lentes (10 s). Le retirer : docs/guide/06-utiliser-acaw.md"
+        ? "Profil mains libres : ACTIF → bascules lentes (10 s). Pour le retirer : menu de l'icône ACAW → Micro des AirPods, ou « acaw handsfree off »"
         : "Profil mains libres : retiré (bien)");
 
     if (config.ModelNumber is not { } model) return 0;

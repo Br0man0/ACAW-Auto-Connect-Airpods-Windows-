@@ -1,9 +1,8 @@
 ﻿; Installateur d'ACAW (Inno Setup 6, https://jrsoftware.org/isinfo.php).
 ; Construit par build/build-release.ps1, qui passe la version et les dossiers :
 ;   ISCC /DAppVersion=0.4.0 /DSourceDir=<publication> /DOutputDir=<sortie> installer\acaw.iss
-; Explications : docs/guide/09-publier-une-version.md et ADR-0005.
 ;
-; Choix (ADR-0005) : installation POUR L'UTILISATEUR SEUL, sans droits administrateur, dans
+; Choix : installation POUR L'UTILISATEUR SEUL, sans droits administrateur, dans
 ; %LOCALAPPDATA%\Programs\ACAW ; jamais de paquet MSIX (il redirigerait AppData).
 
 #ifndef AppVersion

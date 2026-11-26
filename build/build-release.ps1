@@ -11,7 +11,6 @@
 
     Utilisé par les contrôles GitHub (ci.yml et release.yml), et à la main :
         powershell -ExecutionPolicy Bypass -File build/build-release.ps1
-    Mode d'emploi : docs/guide/09-publier-une-version.md
 
 .PARAMETER Output
     Dossier de sortie (créé, vidé s'il existe), relatif à la racine du dépôt.
