@@ -20,7 +20,7 @@ namespace Acaw.Service;
 /// sinon l'annulation renvoie ECONNRESET et le transfert ne répondra jamais. Si une lecture interrompue avait
 /// quand même reçu des données, elles sont gardées pour la lecture suivante du même tuyau : aucun événement HCI
 /// n'est perdu.</para>
-/// <para><b>Isochrone (appels).</b> Phase W1-4 : en W1-3, ces transferts sont refusés.</para>
+/// <para><b>Isochrone (appels).</b> Voir <see cref="IsoPipe"/> : plusieurs transferts en vol par tuyau, fermés à chaque SET_INTERFACE.</para>
 /// </remarks>
 internal sealed class RadioRelay : IDisposable
 {
@@ -38,9 +38,14 @@ internal sealed class RadioRelay : IDisposable
     private readonly ConcurrentDictionary<byte, BlockingCollection<Urb>> _queues = new();
     private readonly ConcurrentDictionary<byte, byte[]> _leftovers = new();
     private readonly List<Thread> _workers = [];
+    // Isochrone : les tuyaux ouverts (sous _isoLock), les transferts en vol, les tuyaux dont l'ouverture a déjà
+    // échoué dans le réglage actuel (une seule alerte par réglage : Windows réessaie jusqu'au bon réglage).
+    private readonly Lock _isoLock = new();
+    private readonly Dictionary<byte, IsoPipe> _isoPipes = [];
+    private readonly ConcurrentDictionary<uint, IsoTransfer> _liveIso = new();
+    private readonly HashSet<byte> _isoOpenFailed = [];
     private string? _endReason;
     private int _loggedControls;
-    private bool _isoWarned;
 
     private sealed class Urb(UsbIpSubmit submit)
     {
@@ -85,12 +90,13 @@ internal sealed class RadioRelay : IDisposable
                 }
                 var payload = new byte[request.PayloadLength];
                 _stream.ReadExactly(payload);
-                var urb = new Urb(UsbIpFrames.ParseSubmit(request, payload));
-                if (urb.Submit.IsIsochronous)
+                UsbIpSubmit submit = UsbIpFrames.ParseSubmit(request, payload);
+                if (submit.IsIsochronous)
                 {
-                    RefuseIso(urb);
+                    SubmitIso(new IsoTransfer(submit));
                     continue;
                 }
+                var urb = new Urb(submit);
                 _live[urb.Seq] = urb;
                 // SET_INTERFACE passe tout de suite, avant les transferts isochrones que Windows envoie juste après :
                 // derrière d'autres transferts de contrôle, il arriverait trop tard.
@@ -125,6 +131,13 @@ internal sealed class RadioRelay : IDisposable
 
     private void Shutdown()
     {
+        lock (_isoLock)
+        {
+            foreach (IsoPipe pipe in _isoPipes.Values) pipe.Close();
+            _isoPipes.Clear();
+        }
+        // Rend la bande passante qu'un appel avait réservée (réglage 0), comme le fait Linux.
+        _device.ResetAlternates();
         foreach (BlockingCollection<Urb> queue in _queues.Values) queue.CompleteAdding();
         // Les lectures en attente ne finissent qu'en interrompant leurs tuyaux.
         foreach (UsbInterfaceSetting setting in _device.Configuration.Settings)
@@ -194,6 +207,22 @@ internal sealed class RadioRelay : IDisposable
 
     private void Unlink(uint seq, uint victim)
     {
+        if (_liveIso.TryGetValue(victim, out IsoTransfer? transfer))
+        {
+            lock (transfer)
+            {
+                if (transfer.Completed)
+                {
+                    Send(UsbIpFrames.RetUnlink(seq, 0));
+                    return;
+                }
+                transfer.Cancelled = true;
+                // Sans prendre _isoLock : l'envoi d'un transfert le tient puis peut prendre ce verrou-ci (inter-blocage).
+                IsoPipe.Cancel(_device, transfer);
+                Send(UsbIpFrames.RetUnlink(seq, UsbIpFrames.ECONNRESET));
+            }
+            return;
+        }
         if (!_live.TryGetValue(victim, out Urb? urb))
         {
             Send(UsbIpFrames.RetUnlink(seq, 0)); // déjà terminé (sa réponse est partie) ou inconnu
@@ -252,6 +281,16 @@ internal sealed class RadioRelay : IDisposable
                 return (0, 0, []);
             case ControlKind.SetInterface:
             {
+                // Les tuyaux isochrones de l'interface se ferment avant : leur tampon appartient à l'ancien réglage.
+                lock (_isoLock)
+                {
+                    foreach (byte pipe in _isoPipes.Where(p => p.Value.InterfaceNumber == request.InterfaceNumber).Select(p => p.Key).ToList())
+                    {
+                        _isoPipes[pipe].Close();
+                        _isoPipes.Remove(pipe);
+                    }
+                    _isoOpenFailed.Clear();
+                }
                 int error = _device.SetAlternate(request.InterfaceNumber, (byte)request.Value);
                 ServiceLog.Info("relais", $"SET_INTERFACE {request.InterfaceNumber} réglage {request.Value} : "
                                           + (error == 0 ? "fait" : $"erreur Win32 {error}"));
@@ -298,15 +337,45 @@ internal sealed class RadioRelay : IDisposable
         return UsbIpFrames.ErrnoFromWin32(error);
     }
 
-    private void RefuseIso(Urb urb)
+    // Un transfert isochrone part tout de suite vers son tuyau (ouvert au premier transfert du réglage actuel).
+    private void SubmitIso(IsoTransfer transfer)
     {
-        if (!_isoWarned)
+        _liveIso[transfer.Seq] = transfer;
+        lock (_isoLock)
         {
-            _isoWarned = true;
-            ServiceLog.Warn("relais", "transfert isochrone (audio d'un appel) refusé : pris en charge en phase W1-4");
+            byte address = transfer.Submit.Header.EndpointAddress;
+            if (!_isoPipes.TryGetValue(address, out IsoPipe? pipe))
+            {
+                try
+                {
+                    pipe = new IsoPipe(_device, address, CompleteIso);
+                    _isoPipes[address] = pipe;
+                }
+                catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
+                {
+                    if (_isoOpenFailed.Add(address)) ServiceLog.Warn("appels", $"tuyau isochrone 0x{address:X2} non ouvert : {e.Message}");
+                    CompleteIso(transfer, UsbIpFrames.EPIPE, null, null);
+                    return;
+                }
+            }
+            pipe.Submit(transfer);
         }
-        Send(IsoReply.Build(urb.Seq, UsbIpFrames.EPROTO, (uint)urb.Submit.Header.StartFrame, urb.Submit.Packets,
-                            urb.Submit.Header.In, default, results: null));
+    }
+
+    // Fin d'un transfert isochrone : même exclusion réponse / annulation que les autres transferts.
+    private void CompleteIso(IsoTransfer transfer, int status, byte[]? inData, IsoPacketResult[]? results)
+    {
+        lock (transfer)
+        {
+            if (!transfer.Cancelled)
+            {
+                transfer.Completed = true;
+                UsbIpRequestHeader h = transfer.Submit.Header;
+                Send(IsoReply.Build(transfer.Seq, status, (uint)h.StartFrame, transfer.Submit.Packets, h.In, inData,
+                                    status == 0 ? results : null));
+            }
+            _liveIso.TryRemove(transfer.Seq, out _);
+        }
     }
 
     private void Send(byte[] frame)

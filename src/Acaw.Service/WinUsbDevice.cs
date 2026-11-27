@@ -167,6 +167,31 @@ internal sealed unsafe class WinUsbDevice : IDisposable
         return 0;
     }
 
+    /// <summary>Le fichier ouvert de l'adaptateur (pour annuler un transfert isochrone précis).</summary>
+    public SafeHandle File => _file;
+
+    /// <summary>
+    /// Le tuyau isochrone <paramref name="pipe"/> dans les réglages actuels : la poignée de son interface, son numéro
+    /// d'interface et sa taille de paquet par trame. Null s'il n'existe pas ou n'a pas de bande passante (réglage 0).
+    /// </summary>
+    public (SafeHandle Interface, byte InterfaceNumber, int BytesPerInterval)? IsoPipe(byte pipe)
+    {
+        lock (_mapLock)
+        {
+            int index = PipeInterface(pipe);
+            if (index < 0) return null;
+            var (isoIn, isoOut, maxPacket) = Configuration.IsoPipes(_interfaceNumbers[index], _alternates[index]);
+            if (maxPacket == 0 || (pipe != isoIn && pipe != isoOut)) return null;
+            return (_interfaces[index], _interfaceNumbers[index], maxPacket);
+        }
+    }
+
+    /// <summary>Remet le réglage 0 sur toutes les interfaces sauf la première : rend la bande passante d'un appel.</summary>
+    public void ResetAlternates()
+    {
+        foreach (byte number in _interfaceNumbers.Skip(1)) SetAlternate(number, 0);
+    }
+
     public void Dispose()
     {
         for (int i = _interfaces.Count - 1; i >= 0; i--) _interfaces[i].Dispose();
