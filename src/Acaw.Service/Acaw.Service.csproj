@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    acaw-service.exe : le service Windows qui prend en main l'adaptateur Bluetooth (ADR-0006, guide 11).
+    Il tourne en LocalSystem, depuis C:\Program Files\ACAW\service\ (jamais depuis un dossier modifiable par
+    l'utilisateur). En phase W1-2, il ne sert qu'en ligne de commande, dans un terminal administrateur.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>acaw-service</AssemblyName>
+    <!-- Le code d'interop généré par CsWin32 manipule des pointeurs -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Les structures de SetupAPI changent selon le processeur : le service est compilé pour x64 seulement -->
+    <PlatformTarget>x64</PlatformTarget>
+    <!-- Demande les droits administrateur au lancement (changer le pilote d'un périphérique l'exige) -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Acaw.Bluetooth\Acaw.Bluetooth.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Les tests fumée (lecture seule) appellent les classes internes du service -->
+    <InternalsVisibleTo Include="Acaw.Service.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.367">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

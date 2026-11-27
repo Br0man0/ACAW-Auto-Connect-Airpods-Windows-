@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Logique pure de la prise en main de l'adaptateur Bluetooth (ADR-0006) : trames USB/IP, descripteurs USB,
+    garde-fou, choix des nœuds de périphériques. Aucun appel à Windows : tout se teste sans matériel.
+    Plus tard (phase W2) : trames HCI, L2CAP et AAP.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
