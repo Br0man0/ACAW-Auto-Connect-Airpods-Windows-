@@ -46,3 +46,4 @@ WinUsb_GetOverlappedResult
 USBD_ISO_PACKET_DESCRIPTOR
 QueryInterruptTimePrecise
 CancelIoEx
+timeBeginPeriod

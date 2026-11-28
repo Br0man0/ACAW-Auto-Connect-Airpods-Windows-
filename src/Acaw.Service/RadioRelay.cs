@@ -45,6 +45,7 @@ internal sealed class RadioRelay : IDisposable
     private readonly ConcurrentDictionary<uint, IsoTransfer> _liveIso = new();
     private readonly HashSet<byte> _isoOpenFailed = [];
     private string? _endReason;
+    private int _shutDown;
     private int _loggedControls;
 
     private sealed class Urb(UsbIpSubmit submit)
@@ -129,20 +130,30 @@ internal sealed class RadioRelay : IDisposable
         _client.Dispose();
     }
 
+    // Une seule fois (fin de la boucle, Dispose, retrait de l'adaptateur par Windows) ; l'adaptateur peut déjà être
+    // fermé quand on arrive ici.
     private void Shutdown()
     {
+        if (Interlocked.Exchange(ref _shutDown, 1) != 0) return;
         lock (_isoLock)
         {
             foreach (IsoPipe pipe in _isoPipes.Values) pipe.Close();
             _isoPipes.Clear();
         }
-        // Rend la bande passante qu'un appel avait réservée (réglage 0), comme le fait Linux.
-        _device.ResetAlternates();
         foreach (BlockingCollection<Urb> queue in _queues.Values) queue.CompleteAdding();
-        // Les lectures en attente ne finissent qu'en interrompant leurs tuyaux.
-        foreach (UsbInterfaceSetting setting in _device.Configuration.Settings)
+        try
         {
-            foreach (UsbEndpoint endpoint in setting.Endpoints) _device.Abort(endpoint.Address);
+            // Rend la bande passante qu'un appel avait réservée (réglage 0), comme le fait Linux.
+            _device.ResetAlternates();
+            // Les lectures en attente ne finissent qu'en interrompant leurs tuyaux.
+            foreach (UsbInterfaceSetting setting in _device.Configuration.Settings)
+            {
+                foreach (UsbEndpoint endpoint in setting.Endpoints) _device.Abort(endpoint.Address);
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // Adaptateur déjà fermé : ses transferts se sont terminés avec lui.
         }
         lock (_workers)
         {

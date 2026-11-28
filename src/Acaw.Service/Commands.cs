@@ -8,6 +8,8 @@ internal static class Commands
     /// <summary>Affiche l'adaptateur trouvé, son pilote et l'état retenu. Ne change rien.</summary>
     public static int Status()
     {
+        Console.WriteLine($"Service ACAW : {ServiceSetup.Describe()}");
+        Console.WriteLine($"Garde-fou : {(ServiceState.GuardTripped ? "DÉCLENCHÉ (acaw-service --retry pour reprendre)" : "non")}");
         string? radio = AdapterDriver.Find(out AdapterDriver.NotFoundReason reason);
         Console.WriteLine(radio is null ? $"Adaptateur : aucun ({Explain(reason)})" : $"Adaptateur : {radio}");
         if (radio is not null)
@@ -60,7 +62,7 @@ internal static class Commands
     public static int RunConsole(CancellationToken cancel)
     {
         Console.WriteLine("Relais en marche. Ctrl+C pour arrêter et rendre l'adaptateur à son pilote d'origine.");
-        return RelaySession.Run(cancel);
+        return RelaySession.RunConsole(cancel);
     }
 
     /// <summary>Secours : rend leur pilote d'origine à toutes les instances passées sur WinUSB.</summary>
@@ -76,7 +78,7 @@ internal static class Commands
             return 0;
         }
         bool allBack = true;
-        foreach (string id in instances) allBack &= AdapterTakeover.GiveBack(id);
+        foreach (string id in instances) allBack &= AdapterTakeover.GiveBackAndClean(id);
         return allBack ? 0 : 1;
     }
 

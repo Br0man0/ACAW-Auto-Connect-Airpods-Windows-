@@ -30,6 +30,18 @@ internal static class AdapterTakeover
     }
 
     /// <summary>
+    /// Rend l'adaptateur à son pilote d'origine après le relais : attend que l'adaptateur virtuel soit retiré, oublie
+    /// ses nœuds audio cachés (sinon le pilote d'origine numéroterait les siens « 2- »), puis <see cref="GiveBack"/>.
+    /// </summary>
+    public static bool GiveBackAndClean(string radio)
+    {
+        List<string> twins = DeviceCleanup.VirtualTwins(radio);
+        AdapterDriver.WaitFor(() => !twins.Any(AdapterDriver.IsPresent), TimeSpan.FromSeconds(5));
+        ServiceLog.Info("nœuds", $"{twins.Sum(DeviceCleanup.ForgetHiddenAudioNodes)} nœuds audio cachés de l'adaptateur virtuel oubliés");
+        return GiveBack(radio);
+    }
+
+    /// <summary>
     /// Rend le pilote d'origine et attend que la radio Bluetooth soit de retour. true si c'est fait.
     /// </summary>
     public static bool GiveBack(string radio)

@@ -40,6 +40,20 @@ internal static class ServiceState
     public static void ForgetBound(string instanceId) =>
         Save([.. BoundInstances.Where(b => !b.Equals(instanceId, StringComparison.OrdinalIgnoreCase))]);
 
+    /// <summary>
+    /// true quand le garde-fou a rendu l'adaptateur (3 échecs en 10 min) : le service ne le reprend plus tant que
+    /// Romsy ne le demande pas (<c>acaw-service --retry</c>). Retenu même après un redémarrage.
+    /// </summary>
+    public static bool GuardTripped
+    {
+        get => Registry.LocalMachine.OpenSubKey(KeyPath)?.GetValue("GuardTripped") is 1;
+        set
+        {
+            using RegistryKey key = Registry.LocalMachine.CreateSubKey(KeyPath);
+            key.SetValue("GuardTripped", value ? 1 : 0, RegistryValueKind.DWord);
+        }
+    }
+
     private static void Save(string[] instances)
     {
         using RegistryKey key = Registry.LocalMachine.CreateSubKey(KeyPath);

@@ -124,13 +124,37 @@ internal sealed class UsbIpServer : IDisposable
         Run($"fin des reconnexions de {busId}", "-t", Port.ToString(CultureInfo.InvariantCulture), "attach", "-r", "127.0.0.1", "-b", busId, "--stop");
 
     /// <summary>
+    /// Fait place nette avant une session du service : arrête toutes les tentatives de reconnexion d'usbip-win2
+    /// (<c>attach --stop-all</c>) et débranche tous ses adaptateurs virtuels (<c>detach -a</c>).
+    /// </summary>
+    /// <remarks>
+    /// Après un plantage du service, l'ancien adaptateur virtuel peut rester branché pendant qu'usbip-win2 retente
+    /// de le reconnecter ; une nouvelle attache en mettrait un second, avec le même numéro de série. Options lues
+    /// dans le code source d'usbip-win2 (<c>userspace/usbip/usbip.cpp</c>) : <c>detach -a</c> sans valeur débranche
+    /// tous les ports. usbip-win2 ne sert qu'à ACAW sur ce PC : rien d'autre n'est débranché.
+    /// </remarks>
+    public static void CleanLeftovers()
+    {
+        Run("fin de toutes les tentatives de reconnexion", "attach", "--stop-all");
+        Run("débranchement de tous les adaptateurs virtuels", "detach", "-a");
+    }
+
+    /// <summary>
     /// Active ou coupe la tâche planifiée d'usbip-win2 qui débranche tout à l'arrêt du PC : si l'arrêt est annulé,
     /// elle laisse des adaptateurs virtuels morts. Le service débranche lui-même les siens (phase W1-5).
     /// </summary>
     public static void SetShutdownTask(bool enabled) =>
         RunProgram(Path.Combine(Environment.SystemDirectory, "schtasks.exe"),
                    $"tâche « {ShutdownTask} » {(enabled ? "activée" : "désactivée")}",
-                   "/Change", "/TN", ShutdownTask, enabled ? "/ENABLE" : "/DISABLE");
+                   ["/Change", "/TN", ShutdownTask, enabled ? "/ENABLE" : "/DISABLE"], OemEncoding());
+
+    // schtasks.exe, lui, écrit dans la page de code de la console (850 en français) : lue en UTF-8,
+    // « Opération » devenait « Op?ration » au journal (vu à l'installation du service, 2026-11-28).
+    private static System.Text.Encoding OemEncoding()
+    {
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+        return System.Text.Encoding.GetEncoding(CultureInfo.CurrentCulture.TextInfo.OEMCodePage);
+    }
 
     public void Dispose()
     {
@@ -138,13 +162,13 @@ internal sealed class UsbIpServer : IDisposable
         _listener.Stop();
     }
 
-    private static void Run(string what, params string[] args) => RunProgram(UsbipExe, what, args);
+    private static void Run(string what, params string[] args) => RunProgram(UsbipExe, what, args, System.Text.Encoding.UTF8);
 
-    private static void RunProgram(string exe, string what, params string[] args)
+    private static void RunProgram(string exe, string what, string[] args, System.Text.Encoding encoding)
     {
         try
         {
-            using Process process = StartProcess(exe, args);
+            using Process process = StartProcess(exe, args, encoding);
             Task<string> output = process.StandardOutput.ReadToEndAsync();
             Task<string> errors = process.StandardError.ReadToEndAsync();
             if (!process.WaitForExit(15000)) process.Kill();
@@ -156,9 +180,11 @@ internal sealed class UsbIpServer : IDisposable
         }
     }
 
-    private static Process StartUsbip(params string[] args) => StartProcess(UsbipExe, args);
+    // usbip.exe écrit en UTF-8 ; lu avec la page de code de la console, « périphérique » devenait
+    // « p├®riph├®rique » au journal (vu au test R2, 2026-11-27).
+    private static Process StartUsbip(params string[] args) => StartProcess(UsbipExe, args, System.Text.Encoding.UTF8);
 
-    private static Process StartProcess(string exe, string[] args)
+    private static Process StartProcess(string exe, string[] args, System.Text.Encoding encoding)
     {
         var info = new ProcessStartInfo(exe)
         {
@@ -166,10 +192,8 @@ internal sealed class UsbIpServer : IDisposable
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            // usbip.exe écrit en UTF-8 ; lu avec la page de code de la console, « périphérique » devenait
-            // « p├®riph├®rique » au journal (vu au test R2, 2026-11-27).
-            StandardOutputEncoding = System.Text.Encoding.UTF8,
-            StandardErrorEncoding = System.Text.Encoding.UTF8,
+            StandardOutputEncoding = encoding,
+            StandardErrorEncoding = encoding,
         };
         foreach (string a in args) info.ArgumentList.Add(a);
         return Process.Start(info) ?? throw new InvalidOperationException($"{exe} n'a pas démarré");
