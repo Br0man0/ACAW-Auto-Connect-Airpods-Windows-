@@ -50,3 +50,10 @@ public sealed record Started : SwitchEvent;
 
 /// <summary>Battement régulier envoyé par l'hôte pour faire avancer les minuteurs.</summary>
 public sealed record Tick : SwitchEvent;
+
+/// <summary>
+/// La case « Bascule automatique » change. Décochée (règle M, mode manuel) : ACAW ne déplace plus jamais les
+/// AirPods de lui-même, seuls « Amener sur ce PC » et « Rendre » le font. Recochée : les règles normales
+/// s'appliquent tout de suite à l'état du moment.
+/// </summary>
+public sealed record AutomaticChanged(bool On) : SwitchEvent;
