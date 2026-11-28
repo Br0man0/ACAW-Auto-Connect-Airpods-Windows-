@@ -163,7 +163,7 @@ internal sealed class TrayApp : ApplicationContext
         };
 
         _icon.ContextMenuStrip = _menu;
-        _icon.Icon = TrayIcons.For(SwitchState.Away, autoSwitch: false);
+        _icon.Icon = TrayIcons.Unavailable;
         _icon.Text = "ACAW";
         ApplyTexts();
         _status.Text = Lang.Pick("Démarrage…", "Starting…");
@@ -337,7 +337,7 @@ internal sealed class TrayApp : ApplicationContext
             string why = _coordinator.Problem ?? Lang.Pick("Non configuré", "Not configured");
             _status.Text = why;
             _icon.Text = why.Length <= 127 ? why : why[..127];
-            _icon.Icon = TrayIcons.For(SwitchState.Away, autoSwitch: false);
+            _icon.Icon = TrayIcons.Unavailable;
             _take.Enabled = _release.Enabled = _auto.Enabled = false;
             return;
         }

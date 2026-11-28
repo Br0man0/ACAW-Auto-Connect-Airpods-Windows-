@@ -47,7 +47,7 @@ public sealed class AcawHost : IDisposable
     private readonly SwitchStateMachine _machine;
     private readonly CancellationTokenSource _stop = new();
 
-    private AudioActivityTracker _tracker;
+    private readonly AudioActivityTracker _tracker;
     private ITimer? _heartbeat;
     private Task? _loop;                     // traitement de la file en arrière-plan
     private bool _connected;                 // dernier état du casque transmis à la machine
@@ -70,7 +70,7 @@ public sealed class AcawHost : IDisposable
         _options = config.Switching;
         _autoSwitch = config.AutoSwitch;
         (_headset, _media, _meter, _speakers, _radar, _time, _log) = (headset, media, meter, speakers, radar, time, log);
-        _machine = new SwitchStateMachine(_options, time);
+        _machine = new SwitchStateMachine(_options, time, automatic: config.AutoSwitch);
         _tracker = new AudioActivityTracker(_options, time);
     }
 
@@ -181,7 +181,9 @@ public sealed class AcawHost : IDisposable
             case Heartbeat:
                 // Fenêtre de démarrage : les sons d'applis (son d'Opera GX au lancement) ne prennent pas les AirPods.
                 // Les vraies lectures, elles, passent par les contrôles média (MediaChanged) et les prennent toujours.
-                if (_autoSwitch && !_machine.InStartupWindow) Feed(_tracker.OnPeak(_meter.ReadPeak()));
+                // Toujours suivi, même en mode manuel : la machine doit savoir si quelque chose joue (pause R4 avant
+                // « Rendre », sourdine R7 pendant « Amener »). C'est elle qui décide de ne rien faire (règle M).
+                if (!_machine.InStartupWindow) Feed(_tracker.OnPeak(_meter.ReadPeak()));
                 Feed([new Tick()]);
                 if (_radarRetryAt is { } at && _time.GetUtcNow() >= at) StartRadar();
                 if (_profileSettleAt is { } settled && _time.GetUtcNow() >= settled) EndProfileSuppression();
@@ -203,7 +205,7 @@ public sealed class AcawHost : IDisposable
             case MediaChanged:
                 // On relit l'état réel au lieu de croire le message : deux changements très rapprochés
                 // peuvent arriver dans le désordre depuis les threads de Windows.
-                if (_autoSwitch) Feed(_tracker.OnMediaPlaying(_media.IsPlaying));
+                Feed(_tracker.OnMediaPlaying(_media.IsPlaying));
                 break;
             case HeadsetChanged(var state):
                 ApplyHeadsetState(state);
@@ -218,10 +220,11 @@ public sealed class AcawHost : IDisposable
             case SetAuto(var on):
                 _autoSwitch = on;
                 Log(on ? Lang.Pick("Bascule automatique activée", "Automatic switching on")
-                       : Lang.Pick("Bascule automatique suspendue", "Automatic switching paused"));
-                // Le tracker n'a rien reçu pendant la pause : on repart de l'état réel des lecteurs.
-                _tracker = new AudioActivityTracker(_options, _time);
-                if (on) Feed(_tracker.OnMediaPlaying(_media.IsPlaying));
+                       : Lang.Pick("Bascule automatique désactivée : les AirPods restent où ils sont",
+                                   "Automatic switching off: the AirPods stay where they are"));
+                // Relu d'abord : la machine applique les règles à l'état réel des lecteurs (règle M, recochage).
+                Feed(_tracker.OnMediaPlaying(_media.IsPlaying));
+                Feed([new AutomaticChanged(on)]);
                 break;
             case Sync:
                 Log(Lang.Pick("Synchronisation avec l'état réel", "Syncing with the actual state"));
@@ -234,7 +237,7 @@ public sealed class AcawHost : IDisposable
                 // Avant de relire le casque : des AirPods déjà reconnectés par Windows au démarrage seront rendus vite.
                 Feed([new Started()]);
                 CheckHeadset();
-                if (_autoSwitch) Feed(_tracker.OnMediaPlaying(_media.IsPlaying));
+                Feed(_tracker.OnMediaPlaying(_media.IsPlaying));
                 StartRadar();
                 break;
         }

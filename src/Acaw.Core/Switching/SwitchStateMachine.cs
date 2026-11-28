@@ -5,10 +5,16 @@ namespace Acaw.Core.Switching;
 /// On lui envoie des événements, elle renvoie les commandes à exécuter. Elle n'est pas thread-safe :
 /// l'hôte doit lui envoyer les événements un par un, depuis un seul thread (ADR-0002).
 /// </summary>
-public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
+/// <remarks>
+/// Règle M (mode manuel, case « Bascule automatique » décochée) : la machine suit toujours la lecture, mais ne
+/// prend ni ne rend jamais les AirPods d'elle-même ; seuls <see cref="TakeRequested"/> et
+/// <see cref="ReleaseRequested"/> les déplacent. Voir la mise à jour du 2026-11-28 de l'ADR-0003.
+/// </remarks>
+public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time, bool automatic = true)
 {
     private static readonly SwitchCommand[] None = [];
 
+    private bool _automatic = automatic;   // case « Bascule automatique » cochée (sinon règle M)
     private bool _playing;
     private DateTimeOffset? _lastSeen;     // dernière annonce BLE des AirPods
     private DateTimeOffset? _releaseAt;    // relâche programmée (R2, R3)
@@ -28,6 +34,9 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
 
     public SwitchState State { get; private set; } = SwitchState.Away;
 
+    /// <summary>true si la bascule automatique est active ; false en mode manuel (règle M).</summary>
+    public bool Automatic => _automatic;
+
     public IReadOnlyList<SwitchCommand> Handle(SwitchEvent e)
     {
         var commands = e switch
@@ -45,6 +54,7 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
             RadioLinkUnknown => OnLink(null),
             Tick => OnTick(),
             Started => OnStarted(),
+            AutomaticChanged(var on) => OnAutomaticChanged(on),
             _ => None,
         };
         return ShouldUnmute() ? [.. commands, SwitchCommand.UnmuteSpeakers] : commands;
@@ -59,7 +69,8 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
     {
         if (_playing) return None; // pas une nouvelle lecture : rien à décider (R5)
         _playing = true;
-        _held = false;
+        // Règle M : en manuel, un « Amener » reste voulu quoi que fasse la lecture.
+        if (_automatic) _held = false;
         _releaseAt = null;         // une reprise annule la relâche programmée
         _idleDelay = options.SilenceDelay;
 
@@ -67,13 +78,21 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
         // sortir des haut-parleurs en attendant.
         if (State == SwitchState.Switching) return MuteIfPlaying() ? [SwitchCommand.MuteSpeakers] : None;
 
+        // Règle M : en mode manuel, la lecture est suivie mais ne fait jamais venir les AirPods.
+        if (!_automatic) return None;
+
         if (State == SwitchState.Releasing)
         {
             // La déconnexion est déjà partie et ne s'annule pas : on reprendra les AirPods dès qu'elle sera confirmée.
             _retakeAfterRelease = true;
             return None;
         }
+        return TakeIfPossible();
+    }
 
+    // R1 : ailleurs (ou perdus depuis le cooldown, R5) et éveillés → on les fait venir.
+    private IReadOnlyList<SwitchCommand> TakeIfPossible()
+    {
         bool canTake = State == SwitchState.Away
                     || (State == SwitchState.Lost && Now - _lostAt >= options.Cooldown);
         if (!canTake || !AirPodsAwake) return None;
@@ -86,9 +105,12 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
     private IReadOnlyList<SwitchCommand> OnPlaybackStopped(TimeSpan delay)
     {
         _playing = false;
+        if (delay < _idleDelay) _idleDelay = delay;
+        // Règle M : en mode manuel, ni pause ni silence ne rendent les AirPods, et un « Amener » demandé pendant
+        // une relâche reste voulu.
+        if (!_automatic) return None;
         _held = false;
         _retakeAfterRelease = false;
-        if (delay < _idleDelay) _idleDelay = delay;
         if (State == SwitchState.OnWindows)
         {
             var at = Now + delay;
@@ -148,7 +170,8 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
         // Au démarrage du PC (ou au réveil), Windows reconnecte de lui-même les AirPods et les arrache à l'iPhone
         // (journal du 2026-11-26) : personne ne les a demandés, on les rend vite.
         var delay = !requested && InStartupWindow ? options.StartupReleaseDelay : _idleDelay;
-        _releaseAt = _playing || _held ? null : Now + delay;
+        // Règle M : en mode manuel, des AirPods arrivés (à la main, par Windows, au démarrage) restent sur le PC.
+        _releaseAt = !_automatic || _playing || _held ? null : Now + delay;
         if (_muted) _unmuteAt = Now + options.UnmuteDelay; // laisser à Windows le temps de passer le son aux AirPods
         return None;
     }
@@ -198,7 +221,7 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
                 // sauf si une lecture a repris entre-temps.
                 State = SwitchState.OnWindows;
                 _retakeAfterRelease = false;
-                _releaseAt = _playing || _held ? null : Now + options.SilenceDelay;
+                _releaseAt = !_automatic || _playing || _held ? null : Now + options.SilenceDelay; // règle M : pas de nouvel essai
                 return None;
             case SwitchState.OnWindows when _releaseAt is { } at && Now >= at:
                 StartReleasing();
@@ -290,6 +313,33 @@ public sealed class SwitchStateMachine(SwitchOptions options, TimeProvider time)
         _releaseAt = null;
         _retakeAfterRelease = false;
         _waitUntil = Now + options.SwitchTimeout;
+    }
+
+    // Règle M. Décocher : plus aucune décision automatique en attente (relâche programmée, reprise après relâche qui
+    // ne vient pas d'un « Amener ») ; une bascule déjà lancée se termine. Recocher : les règles normales
+    // s'appliquent tout de suite à l'état du moment (choix de Romsy, 2026-11-28).
+    private IReadOnlyList<SwitchCommand> OnAutomaticChanged(bool on)
+    {
+        if (on == _automatic) return None;
+        _automatic = on;
+        if (!on)
+        {
+            _releaseAt = null;
+            _retakeAfterRelease = _retakeAfterRelease && _held;
+            return None;
+        }
+        _held = false; // « gardés à la main » ne vaut qu'en manuel : la bascule normale reprend la main
+        if (State == SwitchState.OnWindows && !_playing)
+        {
+            _releaseAt = Now + options.SilenceDelay;
+            return None;
+        }
+        if (State == SwitchState.Releasing && _playing)
+        {
+            _retakeAfterRelease = true;
+            return None;
+        }
+        return _playing ? TakeIfPossible() : None;
     }
 
     // ACAW vient de démarrer, ou le PC sort de veille : début de la fenêtre de démarrage.
