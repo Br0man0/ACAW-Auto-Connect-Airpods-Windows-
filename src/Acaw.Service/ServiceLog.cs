@@ -8,7 +8,7 @@ namespace Acaw.Service;
 /// Au-delà de 2 Mo, il devient service.old.log. Appelable depuis n'importe quel thread.
 /// </summary>
 /// <remarks>
-/// ProgramData n'est pas redirigé par le conteneur MSIX de l'app Claude : ce journal-là est lisible tel quel.
+/// ProgramData n'est pas redirigé pour les applications empaquetées (MSIX) : ce journal-là est lisible tel quel.
 /// Sécurité : le service écrit en LocalSystem. Le dossier est créé avec des droits restreints (écriture pour
 /// SYSTEM et les administrateurs seulement), et si quelqu'un l'a remplacé par un lien (« junction »), le
 /// service n'y écrit pas : sinon un programme ordinaire pourrait lui faire écraser un fichier système.
