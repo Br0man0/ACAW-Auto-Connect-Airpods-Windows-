@@ -68,18 +68,12 @@ internal static class Commands
     /// <summary>Secours : rend leur pilote d'origine à toutes les instances passées sur WinUSB.</summary>
     public static int RestoreNative()
     {
-        var instances = ServiceState.BoundInstances.ToList();
-        if (ServiceState.RadioInstanceId is { } stored && AdapterDriver.IsOnWinUsb(stored)
-            && !instances.Contains(stored, StringComparer.OrdinalIgnoreCase))
-            instances.Add(stored);
-        if (instances.Count == 0)
+        if (AdapterTakeover.HeldInstances().Count == 0)
         {
             Console.WriteLine("Aucun adaptateur à rendre : le service n'a rien passé sur WinUSB.");
             return 0;
         }
-        bool allBack = true;
-        foreach (string id in instances) allBack &= AdapterTakeover.GiveBackAndClean(id);
-        return allBack ? 0 : 1;
+        return AdapterTakeover.GiveBackAll() ? 0 : 1;
     }
 
     // Écrit au journal ce que le relais doit connaître de l'adaptateur.

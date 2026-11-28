@@ -96,6 +96,15 @@ public static class UsbIpFrames
     /// <summary>Code d'une réponse d'import (OP_REP_IMPORT).</summary>
     public const ushort OpReplyImport = 0x0003;
 
+    /// <summary>
+    /// Taille maximale acceptée pour un transfert (1 Mio). Un adaptateur Bluetooth échange des paquets de quelques
+    /// centaines d'octets ; Windows ne demande jamais plus de quelques dizaines de kilo-octets.
+    /// </summary>
+    public const int MaxTransferLength = 1 << 20;
+
+    /// <summary>Nombre maximal de paquets isochrones par transfert.</summary>
+    public const int MaxPackets = 1024;
+
     /// <summary>Valeur de « nombre de paquets » d'un transfert qui n'est pas isochrone, attendue par usbip-win2.</summary>
     public const uint NotIsochronous = 0xFFFFFFFF;
 
@@ -123,7 +132,9 @@ public static class UsbIpFrames
                 int packets = I32(header, 32);
                 // « Pas isochrone » s'écrit 0 ou 0xFFFFFFFF selon les clients.
                 if (packets == -1) packets = 0;
-                if (length < 0 || packets < 0 || packets > 1024)
+                // Plafonds (revue W1-6, point 4) : sans eux, une longueur énorme ferait déborder le calcul de la taille
+                // qui suit, ou réserverait des gigaoctets, et le service tomberait.
+                if (length < 0 || length > MaxTransferLength || packets < 0 || packets > MaxPackets)
                     throw new FormatException($"Transfert USB/IP impossible : {length} octets, {packets} paquets.");
                 return new UsbIpRequestHeader(command, seq, devId, isIn, endpoint, U32(header, 20), length,
                                               I32(header, 28), packets, I32(header, 36), header[40..48].ToArray(), 0);

@@ -13,14 +13,16 @@ namespace Acaw.Service;
 internal static class RelaySession
 {
     /// <summary>
-    /// Déroule une session jusqu'à sa fin. Rend la raison de l'arrêt ; lance une exception si la prise en main ou
+    /// Déroule une session jusqu'à sa fin. Rend la raison de l'arrêt, et si Windows a retiré l'adaptateur pendant la
+    /// session (Gestionnaire de périphériques, changement de pilote) ; lance une exception si la prise en main ou
     /// l'attache échoue.
     /// </summary>
     /// <param name="radio">L'adaptateur.</param>
     /// <param name="server">Le serveur USB/IP (le service garde le même d'une session à l'autre).</param>
     /// <param name="end">Annulé pour terminer la session : l'adaptateur virtuel est alors débranché proprement.</param>
     /// <param name="commandWatch">Surveillance du firmware après un réveil (service), ou null (console).</param>
-    public static string RunOnce(string radio, UsbIpServer server, CancellationToken end, CommandWatch? commandWatch)
+    public static (string Reason, bool RemovedByWindows) RunOnce(string radio, UsbIpServer server, CancellationToken end,
+                                                                 CommandWatch? commandWatch)
     {
         WinUsbDevice device = AdapterTakeover.Take(radio, end)
                               ?? throw new InvalidOperationException("prise en main de l'adaptateur impossible");
@@ -28,10 +30,12 @@ internal static class RelaySession
         string busId = server.NextBusId();
         int virtualPort = 0;
         bool detached = false;
+        bool removed = false;
         var gate = new Lock();
         // Windows veut retirer l'adaptateur (Gestionnaire de périphériques…) : on lâche tout de suite la poignée.
         using RemovalWatch removal = RemovalWatch.Start(device.File, () =>
         {
+            Volatile.Write(ref removed, true);
             lock (gate)
             {
                 relay?.Dispose();
@@ -59,7 +63,7 @@ internal static class RelaySession
             DateTime start = DateTime.UtcNow;
             string reason = relay.Run(CancellationToken.None);
             ServiceLog.Info("session", $"fin du relais après {(DateTime.UtcNow - start).TotalMinutes:0.0} min : {reason}");
-            return reason;
+            return (reason, Volatile.Read(ref removed));
         }
         finally
         {

@@ -50,27 +50,61 @@ internal static class ServiceLog
         }
     }
 
+    /// <summary>
+    /// true si le dossier appartient au système ou aux administrateurs. Un dossier créé par un compte ordinaire (avant
+    /// l'installation, par exemple) pourrait contenir des pièges : le service n'y écrit pas (revue W1-6, point 3).
+    /// </summary>
+    internal static bool IsTrustedOwner(SecurityIdentifier? owner) =>
+        owner is not null && (owner.IsWellKnown(WellKnownSidType.LocalSystemSid) || owner.IsWellKnown(WellKnownSidType.BuiltinAdministratorsSid));
+
     private static bool FolderUsable()
     {
         if (_folderChecked) return _folderUsable;
         _folderChecked = true;
-        var dir = new DirectoryInfo(Folder);
-        if (!dir.Exists)
+        _folderUsable = false;
+        try
         {
-            var security = new DirectorySecurity();
-            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
-            const InheritanceFlags all = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
-            security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
-                                                            FileSystemRights.FullControl, all, PropagationFlags.None, AccessControlType.Allow));
-            security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
-                                                            FileSystemRights.FullControl, all, PropagationFlags.None, AccessControlType.Allow));
-            security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
-                                                            FileSystemRights.ReadAndExecute, all, PropagationFlags.None, AccessControlType.Allow));
-            dir.Create(security);
+            var dir = new DirectoryInfo(Folder);
+            if (!dir.Exists) dir.Create(SafeSecurity(withOwner: true));
             dir.Refresh();
+            if (dir.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                return Disable($"{Folder} est un lien, pas un dossier");
+            if (!IsTrustedOwner(dir.GetAccessControl().GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier))
+                return Disable($"{Folder} a été créé par un autre compte que le système ou les administrateurs");
+            // Droits remis à neuf à chaque démarrage : écriture pour SYSTEM et les administrateurs seulement.
+            dir.SetAccessControl(SafeSecurity(withOwner: false));
+            var file = new FileInfo(FilePath);
+            if (file.Exists && file.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                return Disable($"{FilePath} est un lien, pas un fichier");
+            _folderUsable = true;
+            return true;
         }
-        _folderUsable = !dir.Attributes.HasFlag(FileAttributes.ReparsePoint);
-        if (!_folderUsable) Console.WriteLine($"Journal désactivé : {Folder} est un lien, pas un dossier.");
-        return _folderUsable;
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            return Disable($"dossier du journal inutilisable ({e.Message})");
+        }
+    }
+
+    private static bool Disable(string why)
+    {
+        Console.WriteLine($"Journal désactivé : {why}.");
+        return false;
+    }
+
+    // Le propriétaire n'est fixé qu'à la création : le changer ensuite exigerait un privilège qu'un administrateur
+    // en console n'active pas.
+    private static DirectorySecurity SafeSecurity(bool withOwner)
+    {
+        var security = new DirectorySecurity();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        if (withOwner) security.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
+        const InheritanceFlags all = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+                                                        FileSystemRights.FullControl, all, PropagationFlags.None, AccessControlType.Allow));
+        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
+                                                        FileSystemRights.FullControl, all, PropagationFlags.None, AccessControlType.Allow));
+        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
+                                                        FileSystemRights.ReadAndExecute, all, PropagationFlags.None, AccessControlType.Allow));
+        return security;
     }
 }

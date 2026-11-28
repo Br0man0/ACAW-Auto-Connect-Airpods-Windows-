@@ -30,6 +30,27 @@ internal static class AdapterTakeover
     }
 
     /// <summary>
+    /// Les adaptateurs que le service a passés sur WinUSB et pas encore rendus, d'après l'état retenu dans le registre
+    /// (valable même si le service vient de démarrer et n'a encore rien fait).
+    /// </summary>
+    public static List<string> HeldInstances()
+    {
+        var instances = ServiceState.BoundInstances.ToList();
+        if (ServiceState.RadioInstanceId is { } stored && AdapterDriver.IsOnWinUsb(stored)
+            && !instances.Contains(stored, StringComparer.OrdinalIgnoreCase))
+            instances.Add(stored);
+        return instances;
+    }
+
+    /// <summary>Rend leur pilote d'origine à tous les adaptateurs encore tenus. true si tous sont revenus.</summary>
+    public static bool GiveBackAll()
+    {
+        bool allBack = true;
+        foreach (string id in HeldInstances()) allBack &= GiveBackAndClean(id);
+        return allBack;
+    }
+
+    /// <summary>
     /// Rend l'adaptateur à son pilote d'origine après le relais : attend que l'adaptateur virtuel soit retiré, oublie
     /// ses nœuds audio cachés (sinon le pilote d'origine numéroterait les siens « 2- »), puis <see cref="GiveBack"/>.
     /// </summary>

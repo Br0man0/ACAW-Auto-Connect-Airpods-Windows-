@@ -47,11 +47,13 @@ internal sealed unsafe class IsoPipe
     private readonly NativeOverlapped*[] _overlapped = new NativeOverlapped*[Slots];
     private readonly ManualResetEvent[] _events = new ManualResetEvent[Slots];
     private readonly void* _registration;
-    private readonly BlockingCollection<(IsoTransfer Transfer, int Slot, long EndFrame)> _pending = new(Slots - 1);
+    private readonly BlockingCollection<(IsoTransfer Transfer, int Slot, long EndFrame)> _pending = new();
     private readonly Action<IsoTransfer, int, byte[]?, IsoPacketResult[]?> _done;
     private readonly IsoOutClock _clock = new();
     private readonly Thread _completer;
-    private int _next;
+    private readonly IsoSlots _slots = new(Slots);           // quelles cases sont en vol (sous _slotLock)
+    private readonly Lock _slotLock = new();
+    private readonly SemaphoreSlim _free = new(Slots, Slots); // nombre de cases libres : on attend s'il n'y en a plus
     private int _inFlight; // transferts confiés à WinUSB et pas encore terminés
     private volatile bool _closing;
     private long _ok;
@@ -114,8 +116,16 @@ internal sealed unsafe class IsoPipe
             _pending.Add((transfer, -1, _clock.EndFrame((uint)transfer.Submit.Header.StartFrame, packets, NowFrame())));
             return;
         }
-        int slot = _next;
-        _next = (_next + 1) % Slots;
+        // Une case libre, jamais celle d'un transfert encore en vol (revue W1-6, point 2) : si toutes sont prises, on
+        // attend qu'un transfert se termine (le fil de fin libère sa case).
+        if (!_free.Wait(TimeSpan.FromSeconds(2)))
+        {
+            ServiceLog.Warn("appels", $"tuyau isochrone 0x{_pipe:X2} : aucune case libre depuis 2 s, transfert refusé");
+            _done(transfer, UsbIpFrames.EPROTO, null, null);
+            return;
+        }
+        int slot;
+        lock (_slotLock) slot = _slots.TryTake() ?? throw new InvalidOperationException("case isochrone introuvable malgré le compteur");
         NativeOverlapped* overlapped = _overlapped[slot];
         _events[slot].Reset();
         overlapped->InternalLow = 0;
@@ -141,6 +151,7 @@ internal sealed unsafe class IsoPipe
         if (error != 0)
         {
             ServiceLog.Warn("appels", $"transfert isochrone refusé sur 0x{_pipe:X2} : erreur Win32 {error}");
+            ReleaseSlot(slot);
             _done(transfer, UsbIpFrames.EPROTO, null, null);
             return;
         }
@@ -180,7 +191,27 @@ internal sealed unsafe class IsoPipe
         return error == 997 /* ERROR_IO_PENDING : parti, en cours */ ? 0 : error;
     }
 
+    private void ReleaseSlot(int slot)
+    {
+        lock (_slotLock) _slots.Release(slot);
+        _free.Release();
+    }
+
+    // Le fil de fin. Si l'adaptateur a été fermé pendant qu'il attendait encore (fermeture plus longue que 2 s),
+    // il s'arrête sans faire tomber le service (revue W1-6, point 7).
     private void Complete()
+    {
+        try
+        {
+            CompleteAll();
+        }
+        catch (ObjectDisposedException)
+        {
+            ServiceLog.Warn("appels", $"tuyau isochrone 0x{_pipe:X2} : adaptateur fermé pendant l'attente d'un transfert");
+        }
+    }
+
+    private void CompleteAll()
     {
         foreach ((IsoTransfer transfer, int slot, long endFrame) in _pending.GetConsumingEnumerable())
         {
@@ -198,6 +229,7 @@ internal sealed unsafe class IsoPipe
             Interlocked.Decrement(ref _inFlight);
             if (!ok)
             {
+                ReleaseSlot(slot);
                 if (error != 995 && ++_failed <= 5)
                 {
                     // Le détail des premiers échecs, pour comprendre lesquels WinUSB refuse.
@@ -214,6 +246,7 @@ internal sealed unsafe class IsoPipe
             _ok++;
             if (!transfer.In)
             {
+                ReleaseSlot(slot); // WinUSB a fini avec la case ; l'attente des trames ne la bloque pas
                 WaitForFrame(endFrame);
                 _done(transfer, 0, null, [.. packets.Select(p => new IsoPacketResult(0, (int)p.Length, true))]);
                 continue;
@@ -223,6 +256,7 @@ internal sealed unsafe class IsoPipe
             var results = new IsoPacketResult[packets.Length];
             USBD_ISO_PACKET_DESCRIPTOR* d = _descriptors + slot * MaxPackets;
             for (int i = 0; i < results.Length; i++) results[i] = new IsoPacketResult((int)d[i].Offset, (int)d[i].Length, d[i].Status == 0);
+            ReleaseSlot(slot); // données et résultats recopiés : la case peut resservir
             _done(transfer, 0, data, results);
         }
     }
